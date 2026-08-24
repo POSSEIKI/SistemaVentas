@@ -6,7 +6,8 @@ import openpyxl
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
+from sqlalchemy.orm import joinedload
 
 from app.db.database import get_db
 from app.core.deps import get_current_user
@@ -65,13 +66,18 @@ async def buscar_productos(
     if categoria_id:
         condiciones.append(Producto.categoria_id == categoria_id)
 
-    result = await db.execute(select(Producto).where(*condiciones).limit(60))
-    productos = result.scalars().all()
+    stmt = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(*condiciones)
+        .limit(60)
+    )
+    result = await db.execute(stmt)
+    productos = result.scalars().unique().all()
     return [_to_out(p) for p in productos]
 
 @router.get("/categorias/lista")
 async def listar_categorias(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    from sqlalchemy import func
     stmt = (
         select(Categoria.id, Categoria.nombre, func.count(Producto.id).label("total_productos"))
         .outerjoin(Producto, (Producto.categoria_id == Categoria.id) & (Producto.activo == True))
@@ -107,7 +113,12 @@ async def listar_unidades(db: AsyncSession = Depends(get_db), _=Depends(get_curr
 
 @router.get("/por-codigo/{codigo}", response_model=ProductoOut)
 async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(Producto).where(Producto.codigo == codigo.strip()))
+    stmt = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(Producto.codigo == codigo.strip())
+    )
+    result = await db.execute(stmt)
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -122,7 +133,10 @@ async def listar_productos(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = select(Producto)
+    query = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+    )
     condiciones = []
     if activo is not None:
         condiciones.append(Producto.activo == activo)
@@ -142,7 +156,7 @@ async def listar_productos(
         query = query.where(*condiciones)
 
     result = await db.execute(query.order_by(Producto.id.desc()).limit(limite))
-    return [_to_out(p) for p in result.scalars().all()]
+    return [_to_out(p) for p in result.scalars().unique().all()]
 
 @router.post("", response_model=ProductoOut)
 async def crear_producto(
@@ -168,8 +182,15 @@ async def crear_producto(
     producto = Producto(**p_data)
     db.add(producto)
     await db.commit()
-    await db.refresh(producto)
-    return _to_out(producto)
+    
+    # Reload with relationships
+    stmt = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(Producto.id == producto.id)
+    )
+    res = await db.execute(stmt)
+    return _to_out(res.scalar_one())
 
 @router.patch("/{producto_id}", response_model=ProductoOut)
 async def actualizar_producto(
@@ -187,8 +208,15 @@ async def actualizar_producto(
         setattr(producto, campo, valor)
     
     await db.commit()
-    await db.refresh(producto)
-    return _to_out(producto)
+    
+    # Reload with relationships
+    stmt = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(Producto.id == producto_id)
+    )
+    res = await db.execute(stmt)
+    return _to_out(res.scalar_one())
 
 @router.delete("/{producto_id}")
 async def eliminar_producto(producto_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
