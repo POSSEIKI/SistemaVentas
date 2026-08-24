@@ -18,6 +18,8 @@ class ProductoCreate(BaseModel):
     stock_actual: Decimal = Decimal("0")
     descripcion: Optional[str] = None
     codigo_barras: Optional[str] = None
+    codigo_barras_blister: Optional[str] = None
+    codigo_barras_unidad: Optional[str] = None
 
     # Fraccionamiento y Multi-Presentación
     maneja_fracciones: bool = False
@@ -44,6 +46,8 @@ class ProductoUpdate(BaseModel):
     activo: Optional[bool] = None
     descripcion: Optional[str] = None
     codigo_barras: Optional[str] = None
+    codigo_barras_blister: Optional[str] = None
+    codigo_barras_unidad: Optional[str] = None
 
     maneja_fracciones: Optional[bool] = None
     contenido_caja: Optional[int] = None
@@ -60,6 +64,8 @@ class ProductoOut(BaseModel):
     id: int
     codigo: str
     codigo_barras: Optional[str] = None
+    codigo_barras_blister: Optional[str] = None
+    codigo_barras_unidad: Optional[str] = None
     nombre: str
     descripcion: Optional[str] = None
     precio_venta: Decimal

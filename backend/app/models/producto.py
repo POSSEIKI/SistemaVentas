@@ -24,6 +24,8 @@ class Producto(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     codigo = Column(String(50), unique=True, nullable=False, index=True)
     codigo_barras = Column(String(50), unique=True, index=True)
+    codigo_barras_blister = Column(String(50), index=True)
+    codigo_barras_unidad = Column(String(50), index=True)
     nombre = Column(String(200), nullable=False, index=True)
     descripcion = Column(Text)
     categoria_id = Column(Integer, ForeignKey("categorias.id"))

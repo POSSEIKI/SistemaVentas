@@ -15,6 +15,8 @@ function formatCOP(n) {
 const FORM_PRODUCTO_VACIO = {
   codigo: '',
   codigo_barras: '',
+  codigo_barras_blister: '',
+  codigo_barras_unidad: '',
   nombre: '',
   descripcion: '',
   categoria_id: '',
@@ -214,6 +216,8 @@ export default function InventarioPage() {
     setFormProducto({
       codigo: p.codigo || '',
       codigo_barras: p.codigo_barras || '',
+      codigo_barras_blister: p.codigo_barras_blister || '',
+      codigo_barras_unidad: p.codigo_barras_unidad || '',
       nombre: p.nombre || '',
       descripcion: p.descripcion || '',
       categoria_id: p.categoria_id || '',
@@ -569,9 +573,26 @@ export default function InventarioPage() {
                     <tr key={p.id} className="hover:bg-dark-700/40 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs text-dark-400">
                         <div className="font-semibold text-dark-300">{p.codigo}</div>
-                        {p.codigo_barras && (
-                          <div className="text-[10px] text-dark-500">{p.codigo_barras}</div>
-                        )}
+                        <div className="space-y-0.5 mt-1">
+                          {p.codigo_barras && (
+                            <div className="text-[10px] text-dark-400 flex items-center gap-1" title="Código de barras caja / principal">
+                              <span className="text-[11px]">📦</span>
+                              <span className="text-dark-300 font-mono">{p.codigo_barras}</span>
+                            </div>
+                          )}
+                          {p.codigo_barras_blister && (
+                            <div className="text-[10px] text-blue-400 flex items-center gap-1" title="Código de barras blister">
+                              <span className="text-[11px]">📑</span>
+                              <span className="text-blue-300 font-mono">{p.codigo_barras_blister}</span>
+                            </div>
+                          )}
+                          {p.codigo_barras_unidad && (
+                            <div className="text-[10px] text-emerald-400 flex items-center gap-1" title="Código de barras unidad / suelta">
+                              <span className="text-[11px]">💊</span>
+                              <span className="text-emerald-300 font-mono">{p.codigo_barras_unidad}</span>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-4 py-3">
@@ -788,10 +809,10 @@ export default function InventarioPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs text-dark-500 mb-1">Código de Barras (EAN/UPC)</label>
+                    <label className="block text-xs text-dark-500 mb-1">Código de Barras Principal / Caja (EAN/UPC)</label>
                     <input
-                      className="input-field"
-                      placeholder="Escanea o escribe el código"
+                      className="input-field font-mono"
+                      placeholder="Ej: 7702132001456 (Escanear o escribir)"
                       value={formProducto.codigo_barras}
                       onChange={e => setFormProducto({ ...formProducto, codigo_barras: e.target.value })}
                     />
@@ -895,7 +916,7 @@ export default function InventarioPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-sm font-bold text-white flex items-center gap-1.5">
-                      📦 Fraccionamiento y Empaque Múltiple
+                      📦 Fraccionamiento y Códigos por Presentación
                     </span>
                     <p className="text-dark-500 text-xs">
                       Activa si este producto viene en caja y se vende fraccionado (caja, blister, unidad)
@@ -911,7 +932,7 @@ export default function InventarioPage() {
                 </div>
 
                 {formProducto.maneja_fracciones && (
-                  <div className="space-y-3 pt-2">
+                  <div className="space-y-4 pt-2">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs text-dark-500 mb-1">
@@ -940,7 +961,8 @@ export default function InventarioPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    {/* Precios por presentación */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs text-dark-500 mb-1">Precio Venta Caja ($)</label>
                         <input
@@ -974,6 +996,38 @@ export default function InventarioPage() {
                         />
                       </div>
                     </div>
+
+                    {/* Códigos de barra individuales por presentación */}
+                    <div className="p-3 bg-dark-800/80 rounded-xl border border-dark-600/60 space-y-2.5">
+                      <span className="text-xs font-bold text-white block">
+                        📑 Códigos de Barras por Presentación (Escaneo Rápido)
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-blue-400 font-medium mb-1">
+                            📑 Código de Barras Blister
+                          </label>
+                          <input
+                            className="input-field font-mono text-xs border-blue-500/30 focus:border-blue-500"
+                            placeholder="Escanea o escribe código del blister"
+                            value={formProducto.codigo_barras_blister}
+                            onChange={e => setFormProducto({ ...formProducto, codigo_barras_blister: e.target.value })}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] text-emerald-400 font-medium mb-1">
+                            💊 Código de Barras Unidad / Sobre
+                          </label>
+                          <input
+                            className="input-field font-mono text-xs border-emerald-500/30 focus:border-emerald-500"
+                            placeholder="Escanea o escribe código de la unidad"
+                            value={formProducto.codigo_barras_unidad}
+                            onChange={e => setFormProducto({ ...formProducto, codigo_barras_unidad: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -996,7 +1050,14 @@ export default function InventarioPage() {
                       value={formProducto.stock_actual}
                       onChange={e => setFormProducto({ ...formProducto, stock_actual: e.target.value })}
                     />
-className="input-field"
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-dark-500 mb-1">Stock Mínimo Alerta</label>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input-field"
                       value={formProducto.stock_minimo}
                       onChange={e => setFormProducto({ ...formProducto, stock_minimo: e.target.value })}
                     />
@@ -1305,12 +1366,23 @@ className="input-field"
                     </div>
                   </div>
 
-                  {/* Mensaje de confirmación */}
-                  <div className="bg-green-950/40 border border-green-800/60 rounded-xl p-3 flex items-center gap-2 text-xs text-green-300">
-                    <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
-                    <span>
-                      <b>¡Inventario Físico Conciliado!</b> Se actualizaron <b>{resumenAjuste.total_ajustados}</b> productos con diferencias en la base de datos.
-                    </span>
+                  {/* Mensajes de confirmación */}
+                  <div className="space-y-2">
+                    <div className="bg-green-950/40 border border-green-800/60 rounded-xl p-3 flex items-center gap-2 text-xs text-green-300">
+                      <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
+                      <span>
+                        <b>¡Inventario Físico Conciliado!</b> Se actualizaron <b>{resumenAjuste.total_ajustados}</b> productos con diferencias de stock en la base de datos.
+                      </span>
+                    </div>
+
+                    {resumenAjuste.barras_actualizadas > 0 && (
+                      <div className="bg-blue-950/40 border border-blue-800/60 rounded-xl p-3 flex items-center gap-2 text-xs text-blue-300">
+                        <span className="text-sm">🏷️</span>
+                        <span>
+                          <b>¡Códigos de Barra Sincronizados!</b> Se detectaron y actualizaron automáticamente los códigos de barra (caja/blister/unidad) de <b>{resumenAjuste.barras_actualizadas}</b> productos.
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Tabla de Desfases */}

@@ -1,5 +1,6 @@
 ﻿import io
 import math
+import unicodedata
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -12,6 +13,15 @@ from sqlalchemy.orm import joinedload
 
 from app.models.producto import Producto, Categoria
 from app.models.configuracion import ConfiguracionEmpresa
+
+def _normalizar(texto: Any) -> str:
+    if texto is None:
+        return ""
+    s = str(texto).strip().lower()
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 async def generar_excel_inventario_fisico(
     db: AsyncSession,
@@ -37,6 +47,8 @@ async def generar_excel_inventario_fisico(
                 Producto.nombre.ilike(f"%{q.strip()}%"),
                 Producto.codigo.ilike(f"%{q.strip()}%"),
                 Producto.codigo_barras.ilike(f"%{q.strip()}%"),
+                Producto.codigo_barras_blister.ilike(f"%{q.strip()}%"),
+                Producto.codigo_barras_unidad.ilike(f"%{q.strip()}%"),
                 Producto.principio_activo.ilike(f"%{q.strip()}%"),
             )
         )
@@ -80,14 +92,14 @@ async def generar_excel_inventario_fisico(
     align_right = Alignment(horizontal="right", vertical="center")
     align_left = Alignment(horizontal="left", vertical="center")
 
-    ws.merge_cells("A1:K1")
+    ws.merge_cells("A1:M1")
     title_cell = ws["A1"]
     title_cell.value = f"HOJA DE TOMA DE INVENTARIO FÍSICO — {nombre_empresa.upper()}"
     title_cell.font = font_titulo
     title_cell.fill = fill_header_main
     title_cell.alignment = align_center
 
-    ws.merge_cells("A2:K2")
+    ws.merge_cells("A2:M2")
     sub_cell = ws["A2"]
     fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M")
     sub_cell.value = f"Generado: {fecha_hoy} · Rubro: {rubro} · Total Productos: {len(productos)} · Diligencie el conteo físico en las columnas amarillas"
@@ -103,7 +115,9 @@ async def generar_excel_inventario_fisico(
         headers = [
             ("ID", "left", fill_header_main),
             ("CODIGO", "left", fill_header_main),
-            ("COD_BARRAS", "left", fill_header_main),
+            ("COD_BARRAS_CAJA", "left", fill_header_main),
+            ("COD_BARRAS_BLISTER", "left", fill_header_main),
+            ("COD_BARRAS_UNIDAD", "left", fill_header_main),
             ("NOMBRE_COMERCIAL", "left", fill_header_main),
             ("CATEGORIA", "left", fill_header_main),
             ("LABORATORIO", "left", fill_header_main),
@@ -161,13 +175,16 @@ async def generar_excel_inventario_fisico(
             unids_blister = int(c_caja / c_blister) if c_blister > 0 else 0
             frac_str = f"Caja x{c_caja}" if p.maneja_fracciones else "No"
 
-            formula_total = f"=IF(AND(K{r_idx}=\"\",L{r_idx}=\"\",M{r_idx}=\"\"),\"\",(IF(ISBLANK(K{r_idx}),0,K{r_idx})*{c_caja})+(IF(ISBLANK(L{r_idx}),0,L{r_idx})*{unids_blister})+(IF(ISBLANK(M{r_idx}),0,M{r_idx})))"
-            formula_desfase = f"=IF(N{r_idx}=\"\",\"\",N{r_idx}-J{r_idx})"
+            # Columnas: M=Conteo Cajas, N=Conteo Blisters, O=Conteo Unids, P=Total Fisico, Q=Desfase, L=Stock Digital
+            formula_total = f"=IF(AND(M{r_idx}=\"\",N{r_idx}=\"\",O{r_idx}=\"\"),\"\",(IF(ISBLANK(M{r_idx}),0,M{r_idx})*{c_caja})+(IF(ISBLANK(N{r_idx}),0,N{r_idx})*{unids_blister})+(IF(ISBLANK(O{r_idx}),0,O{r_idx})))"
+            formula_desfase = f"=IF(P{r_idx}=\"\",\"\",P{r_idx}-L{r_idx})"
 
             row_data = [
                 (p.id, align_left, row_fill, thin_border, None),
                 (p.codigo, align_left, row_fill, thin_border, None),
                 (p.codigo_barras or "", align_left, row_fill, thin_border, None),
+                (p.codigo_barras_blister or "", align_left, row_fill, thin_border, None),
+                (p.codigo_barras_unidad or "", align_left, row_fill, thin_border, None),
                 (p.nombre, align_left, row_fill, thin_border, None),
                 (cat_nom, align_left, row_fill, thin_border, None),
                 (p.laboratorio or "", align_left, row_fill, thin_border, None),
@@ -224,7 +241,7 @@ async def generar_excel_inventario_fisico(
                 max_len = len(v_str)
         ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-    ws.freeze_panes = "E5"
+    ws.freeze_panes = "F5"
 
     output = io.BytesIO()
     wb.save(output)
@@ -242,8 +259,8 @@ async def procesar_ajuste_inventario_fisico(
     headers_map = {}
 
     for row_idx in range(1, 10):
-        row_vals = [str(ws.cell(row=row_idx, column=c).value or "").strip().upper() for c in range(1, ws.max_column + 1)]
-        if "CODIGO" in row_vals or "ID" in row_vals or "NOMBRE_COMERCIAL" in row_vals or "NOMBRE_PRODUCTO" in row_vals:
+        row_vals = [_normalizar(ws.cell(row=row_idx, column=c).value) for c in range(1, ws.max_column + 1)]
+        if any(k in row_vals for k in ["codigo", "id", "cod", "nombre_comercial", "nombre_producto", "nombre"]):
             header_row_idx = row_idx
             for c_idx, val in enumerate(row_vals, 1):
                 if val:
@@ -253,26 +270,34 @@ async def procesar_ajuste_inventario_fisico(
     if not header_row_idx:
         raise ValueError("No se encontró la fila de encabezados en el archivo Excel de conteo físico.")
 
-    col_id = headers_map.get("ID") or headers_map.get("ID_SISTEMA")
-    col_codigo = headers_map.get("CODIGO") or headers_map.get("COD")
-    col_conteo_fisico = headers_map.get("CONTEO_FISICO")
-    col_conteo_cajas = headers_map.get("CONTEO_CAJAS")
-    col_conteo_blisters = headers_map.get("CONTEO_BLISTERS")
-    col_conteo_unidades = headers_map.get("CONTEO_UNIDADES")
-    col_total_fisico = headers_map.get("TOTAL_FISICO")
+    col_id = headers_map.get("id") or headers_map.get("id_sistema")
+    col_codigo = headers_map.get("codigo") or headers_map.get("cod") or headers_map.get("cod_producto") or headers_map.get("ref")
+    col_nombre = headers_map.get("nombre_comercial") or headers_map.get("nombre_producto") or headers_map.get("nombre")
 
-    if not col_id and not col_codigo:
-        raise ValueError("El archivo debe contener la columna 'ID' o 'CODIGO' del producto.")
+    col_barras_caja = headers_map.get("cod_barras_caja") or headers_map.get("cod_barras") or headers_map.get("codigo_barras") or headers_map.get("barra")
+    col_barras_blister = headers_map.get("cod_barras_blister") or headers_map.get("codigo_barras_blister") or headers_map.get("barra_blister")
+    col_barras_unidad = headers_map.get("cod_barras_unidad") or headers_map.get("codigo_barras_unidad") or headers_map.get("barra_unidad")
+
+    col_conteo_fisico = headers_map.get("conteo_fisico") or headers_map.get("fisico")
+    col_conteo_cajas = headers_map.get("conteo_cajas")
+    col_conteo_blisters = headers_map.get("conteo_blisters")
+    col_conteo_unidades = headers_map.get("conteo_unidades")
+    col_total_fisico = headers_map.get("total_fisico")
+
+    if not col_id and not col_codigo and not col_nombre:
+        raise ValueError("El archivo debe contener al menos la columna 'ID', 'CODIGO' o 'NOMBRE' del producto.")
 
     stmt = select(Producto).options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida)).where(Producto.activo == True)
     res = await db.execute(stmt)
     prods_all = res.scalars().unique().all()
     map_by_id = {p.id: p for p in prods_all}
     map_by_codigo = {p.codigo.strip().upper(): p for p in prods_all if p.codigo}
+    map_by_nombre = {_normalizar(p.nombre): p for p in prods_all if p.nombre}
 
     total_leidos = 0
     total_ajustados = 0
     total_sin_cambio = 0
+    barras_actualizadas_count = 0
     sobrantes_count = 0
     faltantes_count = 0
     impacto_total_costo = Decimal("0")
@@ -281,6 +306,7 @@ async def procesar_ajuste_inventario_fisico(
     for r in range(header_row_idx + 1, ws.max_row + 1):
         id_val = ws.cell(row=r, column=col_id).value if col_id else None
         cod_val = str(ws.cell(row=r, column=col_codigo).value or "").strip().upper() if col_codigo else None
+        nom_val = _normalizar(ws.cell(row=r, column=col_nombre).value) if col_nombre else None
 
         prod: Optional[Producto] = None
         if id_val is not None:
@@ -290,10 +316,36 @@ async def procesar_ajuste_inventario_fisico(
                 pass
         if not prod and cod_val:
             prod = map_by_codigo.get(cod_val)
+        if not prod and nom_val:
+            prod = map_by_nombre.get(nom_val)
 
         if not prod:
             continue
 
+        # ── 1. ACTUALIZAR CÓDIGOS DE BARRA SI VIENEN EN EL EXCEL ────────
+        modifico_barras = False
+        if col_barras_caja:
+            b_caja = str(ws.cell(row=r, column=col_barras_caja).value or "").strip()
+            if b_caja and b_caja != "None" and b_caja != str(prod.codigo_barras or ""):
+                prod.codigo_barras = b_caja
+                modifico_barras = True
+
+        if col_barras_blister:
+            b_blis = str(ws.cell(row=r, column=col_barras_blister).value or "").strip()
+            if b_blis and b_blis != "None" and b_blis != str(prod.codigo_barras_blister or ""):
+                prod.codigo_barras_blister = b_blis
+                modifico_barras = True
+
+        if col_barras_unidad:
+            b_unid = str(ws.cell(row=r, column=col_barras_unidad).value or "").strip()
+            if b_unid and b_unid != "None" and b_unid != str(prod.codigo_barras_unidad or ""):
+                prod.codigo_barras_unidad = b_unid
+                modifico_barras = True
+
+        if modifico_barras:
+            barras_actualizadas_count += 1
+
+        # ── 2. CALCULAR CONTEO FÍSICO Y DESFASE ────────────────────────
         conteo_final = None
 
         if col_total_fisico:
@@ -355,6 +407,8 @@ async def procesar_ajuste_inventario_fisico(
                 "desfase": float(desfase),
                 "costo_unitario": float(costo_unit),
                 "impacto_costo": float(impacto_item),
+                "codigo_barras": prod.codigo_barras,
+                "codigo_barras_blister": prod.codigo_barras_blister,
             })
 
             prod.stock_actual = conteo_final
@@ -368,6 +422,7 @@ async def procesar_ajuste_inventario_fisico(
         "total_contados": total_leidos,
         "total_ajustados": total_ajustados,
         "total_coincidentes": total_sin_cambio,
+        "barras_actualizadas": barras_actualizadas_count,
         "sobrantes": sobrantes_count,
         "faltantes": faltantes_count,
         "impacto_total_costo": float(impacto_total_costo),

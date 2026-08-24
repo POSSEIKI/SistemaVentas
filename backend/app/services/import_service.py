@@ -158,6 +158,10 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
             precio_blister = Decimal("0")
             precio_unidad = Decimal("0")
 
+            codigo_barras = None
+            codigo_barras_blister = None
+            codigo_barras_unidad = None
+
             if es_maestro_drogueria:
                 idx_cod = h_map.get("cod producto", 0)
                 idx_nom = h_map.get("nombre", 1)
@@ -165,6 +169,19 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
                 nombre = str(row[idx_nom] or "").strip()
                 if not codigo or not nombre:
                     continue
+
+                # Códigos de barra si vienen en el archivo
+                idx_bar = h_map.get("codigo barras", h_map.get("codigo_barras", h_map.get("barra", -1)))
+                if idx_bar != -1 and len(row) > idx_bar and row[idx_bar]:
+                    codigo_barras = str(row[idx_bar]).strip() or None
+
+                idx_bar_blis = h_map.get("codigo barras blister", h_map.get("codigo_barras_blister", h_map.get("barra_blister", -1)))
+                if idx_bar_blis != -1 and len(row) > idx_bar_blis and row[idx_bar_blis]:
+                    codigo_barras_blister = str(row[idx_bar_blis]).strip() or None
+
+                idx_bar_unid = h_map.get("codigo barras unidad", h_map.get("codigo_barras_unidad", h_map.get("barra_unidad", -1)))
+                if idx_bar_unid != -1 and len(row) > idx_bar_unid and row[idx_bar_unid]:
+                    codigo_barras_unidad = str(row[idx_bar_unid]).strip() or None
 
                 contenido_caja = _parse_int(row[h_map.get("contenido interno caja", 4)] if len(row) > 4 else 1, default=1)
                 contenido_blister = _parse_int(row[h_map.get("contenido interno blister", 5)] if len(row) > 5 else 0, default=0)
@@ -197,8 +214,6 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
                 principio_activo = str(row[h_map.get("componente", 58)] if len(row) > 58 else "").strip()
 
             elif es_ferreteria:
-                # Formato Ferreteria: Tipo, Código, Nombre, Precios
-                # Buscar índices de columnas
                 idx_cod = h_map.get("codigo", h_map.get("codigo", 1))
                 idx_nom = h_map.get("nombre", 2)
                 idx_pre = h_map.get("precios", h_map.get("precio", 3))
@@ -207,6 +222,10 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
                 nombre = str(row[idx_nom] or "").strip()
                 if not codigo or not nombre:
                     continue
+
+                idx_bar = h_map.get("codigo_barras", h_map.get("codigo barras", h_map.get("barra", -1)))
+                if idx_bar != -1 and len(row) > idx_bar and row[idx_bar]:
+                    codigo_barras = str(row[idx_bar]).strip() or None
 
                 precio_venta = _parse_decimal(row[idx_pre] if len(row) > idx_pre else 0)
                 cat_id = categorias_map.get("ferreteria")
@@ -221,6 +240,13 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
                     continue
 
                 codigo_barras = str(row[h_map.get("codigo_barras", 1)] or "").strip() or None
+                idx_bar_blis = h_map.get("codigo_barras_blister", -1)
+                if idx_bar_blis != -1 and len(row) > idx_bar_blis and row[idx_bar_blis]:
+                    codigo_barras_blister = str(row[idx_bar_blis]).strip() or None
+                idx_bar_unid = h_map.get("codigo_barras_unidad", -1)
+                if idx_bar_unid != -1 and len(row) > idx_bar_unid and row[idx_bar_unid]:
+                    codigo_barras_unidad = str(row[idx_bar_unid]).strip() or None
+
                 cat_raw = str(row[h_map.get("categoria", 3)] or "General").strip()
                 cat_id = categorias_map.get(_normalizar_texto(cat_raw))
 
@@ -254,6 +280,8 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
             productos_a_procesar.append({
                 "codigo": codigo,
                 "codigo_barras": codigo_barras,
+                "codigo_barras_blister": codigo_barras_blister,
+                "codigo_barras_unidad": codigo_barras_unidad,
                 "nombre": nombre,
                 "descripcion": descripcion or None,
                 "categoria_id": cat_id,
@@ -294,8 +322,10 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
             index_elements=['codigo'],
             set_={
                 'nombre': stmt.excluded.nombre,
-                'codigo_barras': stmt.excluded.codigo_barras,
-                'categoria_id': stmt.excluded.categoria_id,
+                'codigo_barras': func.coalesce(stmt.excluded.codigo_barras, Producto.codigo_barras),
+                'codigo_barras_blister': func.coalesce(stmt.excluded.codigo_barras_blister, Producto.codigo_barras_blister),
+                'codigo_barras_unidad': func.coalesce(stmt.excluded.codigo_barras_unidad, Producto.codigo_barras_unidad),
+                'categoria_id': func.coalesce(stmt.excluded.categoria_id, Producto.categoria_id),
                 'precio_venta': stmt.excluded.precio_venta,
                 'precio_costo': stmt.excluded.precio_costo,
                 'iva_porcentaje': stmt.excluded.iva_porcentaje,
@@ -307,9 +337,9 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
                 'precio_caja': stmt.excluded.precio_caja,
                 'precio_blister': stmt.excluded.precio_blister,
                 'precio_unidad': stmt.excluded.precio_unidad,
-                'laboratorio': stmt.excluded.laboratorio,
-                'principio_activo': stmt.excluded.principio_activo,
-                'ubicacion': stmt.excluded.ubicacion,
+                'laboratorio': func.coalesce(stmt.excluded.laboratorio, Producto.laboratorio),
+                'principio_activo': func.coalesce(stmt.excluded.principio_activo, Producto.principio_activo),
+                'ubicacion': func.coalesce(stmt.excluded.ubicacion, Producto.ubicacion),
                 'activo': True,
             }
         )

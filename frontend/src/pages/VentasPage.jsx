@@ -47,10 +47,18 @@ export default function VentasPage() {
   const [busqCliente, setBusqCliente] = useState('')
   const [clientes, setClientes] = useState([])
 
-  const procesarSeleccionProducto = (p) => {
+  const procesarSeleccionProducto = (p, presentacionDirecta = null) => {
     if (p.maneja_fracciones) {
-      setProductoFraccion(p)
-      setModalFraccion(true)
+      if (presentacionDirecta) {
+        store.agregarProducto(p, presentacionDirecta)
+        toast.success(`+1 ${presentacionDirecta}: ${p.nombre}`, { duration: 2000 })
+        setBusqueda('')
+        setResultados([])
+        setPagBusqueda(1)
+      } else {
+        setProductoFraccion(p)
+        setModalFraccion(true)
+      }
     } else {
       store.agregarProducto(p)
       setBusqueda('')
@@ -71,12 +79,20 @@ export default function VentasPage() {
 
   // Búsqueda de productos con debounce y prioridad configurada
   const buscarProducto = useCallback(async (q, modo = modoBusqueda) => {
-    if (!q.trim() || q.length < 2) { setResultados([]); setPagBusqueda(1); return }
+    const qClean = (q || '').trim()
+    if (!qClean || qClean.length < 2) { setResultados([]); setPagBusqueda(1); return }
     setBuscando(true)
     try {
-      const res = await productosApi.buscar(q, { modo })
+      const res = await productosApi.buscar(qClean, { modo })
       if (res.length === 1 && modo !== 'SUSTANCIA') {
-        procesarSeleccionProducto(res[0])
+        const prod = res[0]
+        let presDirecta = null
+        if (prod.maneja_fracciones) {
+          if (prod.codigo_barras_blister && prod.codigo_barras_blister === qClean) presDirecta = 'BLISTER'
+          else if (prod.codigo_barras_unidad && prod.codigo_barras_unidad === qClean) presDirecta = 'UNIDAD'
+          else if (prod.codigo_barras && prod.codigo_barras === qClean) presDirecta = 'CAJA'
+        }
+        procesarSeleccionProducto(prod, presDirecta)
       } else {
         setResultados(res)
         setPagBusqueda(1)
@@ -87,6 +103,25 @@ export default function VentasPage() {
       setBuscando(false)
     }
   }, [store, modoBusqueda])
+
+  const handleKeyDownBusqueda = async (e) => {
+    if (e.key === 'Enter' && busqueda.trim()) {
+      e.preventDefault()
+      const cod = busqueda.trim()
+      try {
+        const res = await productosApi.obtenerPorCodigo(cod)
+        if (res && res.producto) {
+          procesarSeleccionProducto(res.producto, res.presentacion_detectada)
+          setBusqueda('')
+          setResultados([])
+          return
+        }
+      } catch {}
+      if (resultados.length > 0) {
+        procesarSeleccionProducto(resultados[0])
+      }
+    }
+  }
 
   const handleBusquedaChange = (val) => {
     setBusqueda(val)
@@ -219,10 +254,11 @@ export default function VentasPage() {
             className="input-field pl-10 pr-10"
             value={busqueda}
             onChange={e => handleBusquedaChange(e.target.value)}
+            onKeyDown={handleKeyDownBusqueda}
             placeholder={
               modoBusqueda === 'SUSTANCIA'
                 ? 'Escribe la sustancia o genérico (ej: Acetaminofen, Amoxicilina, Omeprazol)...'
-                : 'Escanear código de barras o escribir nombre comercial...'
+                : 'Escanear código de barras (Caja / Blister / Unidad) o buscar...'
             }
             autoFocus
           />

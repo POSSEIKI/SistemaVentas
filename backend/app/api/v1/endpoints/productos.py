@@ -23,6 +23,8 @@ def _to_out(p: Producto) -> ProductoOut:
         id=p.id,
         codigo=p.codigo,
         codigo_barras=p.codigo_barras,
+        codigo_barras_blister=p.codigo_barras_blister,
+        codigo_barras_unidad=p.codigo_barras_unidad,
         nombre=p.nombre,
         descripcion=p.descripcion,
         precio_venta=p.precio_venta or Decimal("0"),
@@ -74,34 +76,43 @@ async def buscar_productos(
             Producto.principio_activo.ilike(f"%{q_clean}%")
         ]
     elif modo == "CODIGO":
-        # Búsqueda dedicada por código o código de barras
+        # Búsqueda dedicada por código o códigos de barra (caja, blister, unidad)
         rank_expr = case(
             (Producto.codigo_barras == q_clean, 1),
-            (Producto.codigo == q_clean, 2),
-            (Producto.codigo_barras.ilike(f"{q_clean}%"), 3),
-            (Producto.codigo.ilike(f"{q_clean}%"), 4),
-            else_=5
+            (Producto.codigo_barras_blister == q_clean, 2),
+            (Producto.codigo_barras_unidad == q_clean, 3),
+            (Producto.codigo == q_clean, 4),
+            (Producto.codigo_barras.ilike(f"{q_clean}%"), 5),
+            (Producto.codigo.ilike(f"{q_clean}%"), 6),
+            else_=7
         )
         condiciones = [
             Producto.activo == True,
             or_(
-                Producto.codigo_barras.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras == q_clean,
+                Producto.codigo_barras_blister == q_clean,
+                Producto.codigo_barras_unidad == q_clean,
                 Producto.codigo.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras_blister.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras_unidad.ilike(f"%{q_clean}%"),
             )
         ]
     else:
-        # Modo NOMBRE (Predeterminado): Prioridad absoluta al Nombre Comercial y Código
+        # Modo NOMBRE (Predeterminado): Prioridad a códigos exactos de barra/código y nombres
         rank_expr = case(
             (Producto.codigo_barras == q_clean, 1),
-            (Producto.codigo == q_clean, 2),
-            (Producto.nombre.ilike(f"{q_clean}%"), 3),
-            (Producto.nombre.ilike(f"% {q_clean}%"), 4),
-            (Producto.nombre.ilike(f"%{q_clean}%"), 5),
-            (Producto.codigo.ilike(f"{q_clean}%"), 6),
-            (Producto.principio_activo.ilike(f"{q_clean}%"), 7),
-            (Producto.principio_activo.ilike(f"%{q_clean}%"), 8),
-            (Producto.laboratorio.ilike(f"%{q_clean}%"), 9),
-            else_=10
+            (Producto.codigo_barras_blister == q_clean, 2),
+            (Producto.codigo_barras_unidad == q_clean, 3),
+            (Producto.codigo == q_clean, 4),
+            (Producto.nombre.ilike(f"{q_clean}%"), 5),
+            (Producto.nombre.ilike(f"% {q_clean}%"), 6),
+            (Producto.nombre.ilike(f"%{q_clean}%"), 7),
+            (Producto.codigo.ilike(f"{q_clean}%"), 8),
+            (Producto.principio_activo.ilike(f"{q_clean}%"), 9),
+            (Producto.principio_activo.ilike(f"%{q_clean}%"), 10),
+            (Producto.laboratorio.ilike(f"%{q_clean}%"), 11),
+            else_=12
         )
         condiciones = [
             Producto.activo == True,
@@ -109,6 +120,8 @@ async def buscar_productos(
                 Producto.nombre.ilike(f"%{q_clean}%"),
                 Producto.codigo.ilike(f"%{q_clean}%"),
                 Producto.codigo_barras.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras_blister.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras_unidad.ilike(f"%{q_clean}%"),
                 Producto.principio_activo.ilike(f"%{q_clean}%"),
                 Producto.laboratorio.ilike(f"%{q_clean}%"),
             )
@@ -163,16 +176,40 @@ async def listar_unidades(db: AsyncSession = Depends(get_db), _=Depends(get_curr
     result = await db.execute(select(UnidadMedida).where(UnidadMedida.activo == True).order_by(UnidadMedida.nombre))
     return [{"id": u.id, "nombre": u.nombre, "abreviatura": u.abreviatura} for u in result.scalars().all()]
 
-@router.get("/por-codigo/{codigo}", response_model=ProductoOut)
+@router.get("/por-codigo/{codigo}")
 async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    cod_clean = codigo.strip()
     stmt = (
         select(Producto)
         .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
-        .where(Producto.codigo == codigo.strip())
+        .where(
+            or_(
+                Producto.codigo == cod_clean,
+                Producto.codigo_barras == cod_clean,
+                Producto.codigo_barras_blister == cod_clean,
+                Producto.codigo_barras_unidad == cod_clean,
+            )
+        )
     )
     result = await db.execute(stmt)
     p = result.scalar_one_or_none()
-    return _to_out(p)
+    if not p:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Detectar cuál presentación coincide con el código de barras escaneado
+    presentacion = "CAJA"
+    if p.maneja_fracciones:
+        if p.codigo_barras_blister and p.codigo_barras_blister == cod_clean:
+            presentacion = "BLISTER"
+        elif p.codigo_barras_unidad and p.codigo_barras_unidad == cod_clean:
+            presentacion = "UNIDAD"
+        elif p.codigo_barras and p.codigo_barras == cod_clean:
+            presentacion = "CAJA"
+
+    return {
+        "producto": _to_out(p),
+        "presentacion_detectada": presentacion
+    }
 
 @router.get("", response_model=PaginatedProductosOut)
 async def listar_productos(
@@ -195,6 +232,8 @@ async def listar_productos(
                 Producto.nombre.ilike(f"%{q.strip()}%"),
                 Producto.codigo.ilike(f"%{q.strip()}%"),
                 Producto.codigo_barras.ilike(f"%{q.strip()}%"),
+                Producto.codigo_barras_blister.ilike(f"%{q.strip()}%"),
+                Producto.codigo_barras_unidad.ilike(f"%{q.strip()}%"),
                 Producto.principio_activo.ilike(f"%{q.strip()}%"),
                 Producto.laboratorio.ilike(f"%{q.strip()}%"),
             )
