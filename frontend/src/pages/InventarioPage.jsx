@@ -63,22 +63,21 @@ export default function InventarioPage() {
   const [resumenImportacion, setResumenImportacion] = useState(null)
   const fileInputRef = useRef(null)
 
-  const cargarDatos = async (busq = '') => {
+  const cargarDatos = async (busq = busqueda, cat = catFiltro) => {
     setCargando(true)
     try {
-      if (busq.trim().length >= 2) {
-        const prods = await productosApi.buscar(busq.trim())
-        setProductos(prods)
-      } else {
-        const [prods, cats, unis] = await Promise.all([
-          productosApi.listar({ activo: true, limite: 150 }),
-          productosApi.categorias(),
-          productosApi.unidades(),
-        ])
-        setProductos(prods)
-        setCategorias(cats)
-        setUnidades(unis)
-      }
+      const params = { activo: true, limite: 300 }
+      if (cat) params.categoria_id = parseInt(cat)
+      if (busq && busq.trim()) params.q = busq.trim()
+
+      const [prods, cats, unis] = await Promise.all([
+        productosApi.listar(params),
+        productosApi.categorias(),
+        productosApi.unidades(),
+      ])
+      setProductos(prods)
+      setCategorias(cats)
+      setUnidades(unis)
     } catch {
       toast.error('Error cargando inventario')
     } finally {
@@ -87,15 +86,20 @@ export default function InventarioPage() {
   }
 
   useEffect(() => {
-    cargarDatos()
+    cargarDatos('', '')
   }, [])
 
   const handleBusquedaChange = (val) => {
     setBusqueda(val)
     clearTimeout(window._invSearchTimer)
     window._invSearchTimer = setTimeout(() => {
-      cargarDatos(val)
+      cargarDatos(val, catFiltro)
     }, 300)
+  }
+
+  const handleCategoriaChange = (val) => {
+    setCatFiltro(val)
+    cargarDatos(busqueda, val)
   }
 
   const abrirCrear = () => {
@@ -268,29 +272,8 @@ export default function InventarioPage() {
     }
     const unidadesSueltas = resto
 
-    return (
-      <div className="text-right">
-        <div className="text-primary-300 font-medium text-xs">
-          {cajas > 0 && <span className="mr-1">{cajas} Cj</span>}
-          {blisters > 0 && <span className="mr-1">{blisters} Bl</span>}
-          <span>{unidadesSueltas} Und</span>
-        </div>
-        <span className="text-dark-500 text-[11px]">({stockTotal} total)</span>
-      </div>
-    )
-  }
-
-  const filtrados = productos.filter(p => {
-    const q = busqueda.toLowerCase()
-    const matchBusq = !q ||
-      p.nombre.toLowerCase().includes(q) ||
-      p.codigo.toLowerCase().includes(q) ||
-      (p.codigo_barras && p.codigo_barras.toLowerCase().includes(q)) ||
-      (p.laboratorio && p.laboratorio.toLowerCase().includes(q)) ||
-      (p.principio_activo && p.principio_activo.toLowerCase().includes(q))
-    const matchCat = !catFiltro || p.categoria_id === parseInt(catFiltro)
-    return matchBusq && matchCat
-  })
+  const totalCatalogo = categorias.reduce((acc, c) => acc + (c.total_productos || 0), 0)
+  const filtrados = productos
 
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4">
@@ -303,7 +286,7 @@ export default function InventarioPage() {
             Catálogo e Inventario
           </h1>
           <p className="text-dark-500 text-xs mt-0.5">
-            {productos.length} producto(s) registrados
+            {totalCatalogo > 0 ? `${totalCatalogo} productos registrados en total` : `${productos.length} productos mostrados`}
           </p>
         </div>
 
@@ -338,7 +321,7 @@ export default function InventarioPage() {
           />
           {busqueda && (
             <button
-              onClick={() => { setBusqueda(''); cargarDatos('') }}
+              onClick={() => { setBusqueda(''); cargarDatos('', catFiltro) }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
             >
               <X size={14} />
@@ -347,13 +330,15 @@ export default function InventarioPage() {
         </div>
 
         <select
-          className="input-field w-auto py-2"
+          className="input-field w-auto py-2 font-medium"
           value={catFiltro}
-          onChange={e => setCatFiltro(e.target.value)}
+          onChange={e => handleCategoriaChange(e.target.value)}
         >
-          <option value="">Todas las categorías</option>
+          <option value="">Todas las categorías ({totalCatalogo})</option>
           {categorias.map(c => (
-            <option key={c.id} value={c.id}>{c.nombre}</option>
+            <option key={c.id} value={c.id}>
+              {c.nombre} ({c.total_productos || 0})
+            </option>
           ))}
         </select>
       </div>

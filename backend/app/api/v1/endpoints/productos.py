@@ -48,28 +48,42 @@ def _to_out(p: Producto) -> ProductoOut:
 @router.get("/buscar", response_model=List[ProductoOut])
 async def buscar_productos(
     q: str = Query(..., min_length=1),
+    categoria_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Producto).where(
-            Producto.activo == True,
-            or_(
-                Producto.nombre.ilike(f"%{q}%"),
-                Producto.codigo.ilike(f"%{q}%"),
-                Producto.codigo_barras.ilike(f"%{q}%"),
-                Producto.principio_activo.ilike(f"%{q}%"),
-                Producto.laboratorio.ilike(f"%{q}%"),
-            )
-        ).limit(30)
-    )
+    condiciones = [
+        Producto.activo == True,
+        or_(
+            Producto.nombre.ilike(f"%{q}%"),
+            Producto.codigo.ilike(f"%{q}%"),
+            Producto.codigo_barras.ilike(f"%{q}%"),
+            Producto.principio_activo.ilike(f"%{q}%"),
+            Producto.laboratorio.ilike(f"%{q}%"),
+        )
+    ]
+    if categoria_id:
+        condiciones.append(Producto.categoria_id == categoria_id)
+
+    result = await db.execute(select(Producto).where(*condiciones).limit(60))
     productos = result.scalars().all()
     return [_to_out(p) for p in productos]
 
 @router.get("/categorias/lista")
 async def listar_categorias(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(Categoria).where(Categoria.activo == True).order_by(Categoria.nombre))
-    return [{"id": c.id, "nombre": c.nombre} for c in result.scalars().all()]
+    from sqlalchemy import func
+    stmt = (
+        select(Categoria.id, Categoria.nombre, func.count(Producto.id).label("total_productos"))
+        .outerjoin(Producto, (Producto.categoria_id == Categoria.id) & (Producto.activo == True))
+        .where(Categoria.activo == True)
+        .group_by(Categoria.id, Categoria.nombre)
+        .order_by(Categoria.nombre)
+    )
+    result = await db.execute(stmt)
+    return [
+        {"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos}
+        for row in result.all()
+    ]
 
 @router.post("/categorias")
 async def crear_categoria(datos: dict, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
@@ -84,7 +98,7 @@ async def crear_categoria(datos: dict, db: AsyncSession = Depends(get_db), _=Dep
         db.add(cat)
         await db.commit()
         await db.refresh(cat)
-    return {"id": cat.id, "nombre": cat.nombre}
+    return {"id": cat.id, "nombre": cat.nombre, "total_productos": 0}
 
 @router.get("/unidades/lista")
 async def listar_unidades(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
@@ -102,16 +116,31 @@ async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=
 @router.get("", response_model=List[ProductoOut])
 async def listar_productos(
     categoria_id: Optional[int] = None,
+    q: Optional[str] = None,
     activo: Optional[bool] = True,
     limite: int = Query(200, le=1000),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
     query = select(Producto)
+    condiciones = []
     if activo is not None:
-        query = query.where(Producto.activo == activo)
+        condiciones.append(Producto.activo == activo)
     if categoria_id:
-        query = query.where(Producto.categoria_id == categoria_id)
+        condiciones.append(Producto.categoria_id == categoria_id)
+    if q and q.strip():
+        condiciones.append(
+            or_(
+                Producto.nombre.ilike(f"%{q.strip()}%"),
+                Producto.codigo.ilike(f"%{q.strip()}%"),
+                Producto.codigo_barras.ilike(f"%{q.strip()}%"),
+                Producto.principio_activo.ilike(f"%{q.strip()}%"),
+                Producto.laboratorio.ilike(f"%{q.strip()}%"),
+            )
+        )
+    if condiciones:
+        query = query.where(*condiciones)
+
     result = await db.execute(query.order_by(Producto.id.desc()).limit(limite))
     return [_to_out(p) for p in result.scalars().all()]
 
