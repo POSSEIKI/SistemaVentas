@@ -17,7 +17,14 @@ export const productosApi = {
   crearCategoria: (nombre) => api.post('/productos/categorias', { nombre }).then(r => r.data),
   unidades: () => api.get('/productos/unidades/lista').then(r => r.data),
   descargarPlantillaUrl: () => `${api.defaults.baseURL}/productos/plantilla-excel`,
+  exportarInventarioFisicoUrl: (params = {}) => {
+    const sp = new URLSearchParams(params).toString()
+    return `${api.defaults.baseURL}/productos/exportar-inventario-fisico${sp ? `?${sp}` : ''}`
+  },
   importarExcel: (formData) => api.post('/productos/importar-excel', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data),
+  ajustarInventarioFisico: (formData) => api.post('/productos/ajustar-inventario-fisico', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }).then(r => r.data),
 }

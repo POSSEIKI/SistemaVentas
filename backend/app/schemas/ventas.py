@@ -87,6 +87,13 @@ class ProductoOut(BaseModel):
     ubicacion: Optional[str] = None
     model_config = {"from_attributes": True}
 
+class PaginatedProductosOut(BaseModel):
+    items: List[ProductoOut]
+    total: int
+    pagina: int
+    limite: int
+    total_paginas: int
+
 # ─── Clientes ─────────────────────────────────────────────────────────────────
 
 class ClienteCreate(BaseModel):

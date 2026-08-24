@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { productosApi } from '../api/services'
 import {
   Search, Plus, Package, Upload, Download, Edit2,
-  Trash2, X, CheckCircle, AlertCircle, AlertTriangle, HelpCircle
+  Trash2, X, CheckCircle, AlertCircle, AlertTriangle, HelpCircle,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  FileSpreadsheet, Scale, FileCheck, ArrowUpRight, ArrowDownRight
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -46,9 +48,16 @@ export default function InventarioPage() {
   const [catFiltro, setCatFiltro] = useState('')
   const [cargando, setCargando] = useState(true)
 
+  // Paginación
+  const [pagina, setPagina] = useState(1)
+  const [limite, setLimite] = useState(50)
+  const [totalProductos, setTotalProductos] = useState(0)
+  const [totalPaginas, setTotalPaginas] = useState(1)
+
   // Modales
   const [modalProducto, setModalProducto] = useState(false)
   const [modalImportar, setModalImportar] = useState(false)
+  const [modalAjusteFisico, setModalAjusteFisico] = useState(false)
   const [productoEditando, setProductoEditando] = useState(null)
   const [formProducto, setFormProducto] = useState(FORM_PRODUCTO_VACIO)
   const [guardando, setGuardando] = useState(false)
@@ -57,25 +66,47 @@ export default function InventarioPage() {
   const [modalNuevaCat, setModalNuevaCat] = useState(false)
   const [nombreNuevaCat, setNombreNuevaCat] = useState('')
 
-  // Importación
+  // Importación de Catálogo
   const [archivoImportar, setArchivoImportar] = useState(null)
   const [importando, setImportando] = useState(false)
   const [resumenImportacion, setResumenImportacion] = useState(null)
+
+  // Ajuste / Conciliación de Inventario Físico
+  const [archivoAjuste, setArchivoAjuste] = useState(null)
+  const [ajustandoFisico, setAjustandoFisico] = useState(false)
+  const [resumenAjuste, setResumenAjuste] = useState(null)
+  const [filtroDesfase, setFiltroDesfase] = useState('TODOS') // TODOS | SOBRANTES | FALTANTES
+  const fileAjusteRef = useRef(null)
   const fileInputRef = useRef(null)
 
-  const cargarDatos = async (busq = busqueda, cat = catFiltro) => {
+  const cargarDatos = async (busq = busqueda, cat = catFiltro, pag = pagina, lim = limite) => {
     setCargando(true)
     try {
-      const params = { activo: true, limite: 300 }
+      const params = {
+        activo: true,
+        pagina: pag,
+        limite: lim,
+      }
       if (cat) params.categoria_id = parseInt(cat)
       if (busq && busq.trim()) params.q = busq.trim()
 
-      const [prods, cats, unis] = await Promise.all([
+      const [resProds, cats, unis] = await Promise.all([
         productosApi.listar(params),
         productosApi.categorias(),
         productosApi.unidades(),
       ])
-      setProductos(prods)
+
+      if (resProds && resProds.items) {
+        setProductos(resProds.items)
+        setTotalProductos(resProds.total)
+        setTotalPaginas(resProds.total_paginas || 1)
+        setPagina(resProds.pagina || pag)
+      } else if (Array.isArray(resProds)) {
+        setProductos(resProds)
+        setTotalProductos(resProds.length)
+        setTotalPaginas(1)
+      }
+
       setCategorias(cats)
       setUnidades(unis)
     } catch {
@@ -86,20 +117,64 @@ export default function InventarioPage() {
   }
 
   useEffect(() => {
-    cargarDatos('', '')
+    cargarDatos('', '', 1, limite)
   }, [])
 
   const handleBusquedaChange = (val) => {
     setBusqueda(val)
+    setPagina(1)
     clearTimeout(window._invSearchTimer)
     window._invSearchTimer = setTimeout(() => {
-      cargarDatos(val, catFiltro)
+      cargarDatos(val, catFiltro, 1, limite)
     }, 300)
   }
 
   const handleCategoriaChange = (val) => {
     setCatFiltro(val)
-    cargarDatos(busqueda, val)
+    setPagina(1)
+    cargarDatos(busqueda, val, 1, limite)
+  }
+
+  const cambiarPagina = (nuevaPag) => {
+    if (nuevaPag < 1 || nuevaPag > totalPaginas) return
+    setPagina(nuevaPag)
+    cargarDatos(busqueda, catFiltro, nuevaPag, limite)
+  }
+
+  const cambiarLimite = (nuevoLim) => {
+    const lim = parseInt(nuevoLim)
+    setLimite(lim)
+    setPagina(1)
+    cargarDatos(busqueda, catFiltro, 1, lim)
+  }
+
+  const handleDescargarTomaFisica = () => {
+    toast.success('Generando hoja de conteo físico Excel...')
+    const params = {}
+    if (catFiltro) params.categoria_id = catFiltro
+    if (busqueda) params.q = busqueda
+    window.open(productosApi.exportarInventarioFisicoUrl(params), '_blank')
+  }
+
+  const handleSubirAjusteFisico = async () => {
+    if (!archivoAjuste) {
+      toast.error('Selecciona el archivo Excel diligenciado con el conteo físico')
+      return
+    }
+    setAjustandoFisico(true)
+    setResumenAjuste(null)
+    try {
+      const formData = new FormData()
+      formData.append('archivo', archivoAjuste)
+      const res = await productosApi.ajustarInventarioFisico(formData)
+      setResumenAjuste(res)
+      toast.success(`Inventario actualizado: ${res.total_ajustados} productos ajustados`)
+      cargarDatos(busqueda, catFiltro, pagina, limite)
+    } catch (err) {
+      toast.error(err.message || 'Error procesando ajuste de inventario')
+    } finally {
+      setAjustandoFisico(false)
+    }
   }
 
   const abrirCrear = () => {
@@ -291,31 +366,53 @@ export default function InventarioPage() {
     <div className="p-4 max-w-6xl mx-auto space-y-4">
 
       {/* ── Encabezado & Acciones Principales ──────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Package size={24} className="text-primary-500" />
             Catálogo e Inventario
           </h1>
           <p className="text-dark-500 text-xs mt-0.5">
-            {totalCatalogo > 0 ? `${totalCatalogo} productos registrados en total` : `${productos.length} productos mostrados`}
+            {totalProductos > 0 ? `${totalProductos.toLocaleString()} productos en catálogo` : '0 productos'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Botón Descargar Hoja de Toma Física */}
           <button
-            onClick={() => setModalImportar(true)}
-            className="btn-secondary flex items-center gap-2 py-2 px-3 text-sm"
+            onClick={handleDescargarTomaFisica}
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-primary-500 hover:text-primary-400 transition-colors"
+            title="Descarga el inventario actual en Excel con columnas para conteo físico"
           >
-            <Upload size={16} />
-            <span>Importar Excel</span>
+            <Download size={15} />
+            <span>Hoja Toma Física (.xlsx)</span>
           </button>
 
+          {/* Botón Conciliar / Ajustar Inventario Físico */}
+          <button
+            onClick={() => { setResumenAjuste(null); setArchivoAjuste(null); setModalAjusteFisico(true) }}
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-amber-500 hover:text-amber-400 transition-colors bg-amber-950/20 border-amber-800/40 text-amber-300"
+            title="Cargar archivo Excel con conteo físico para calcular desfase y actualizar stock"
+          >
+            <Scale size={15} />
+            <span>Conciliar Físico</span>
+          </button>
+
+          {/* Botón Importar Catálogo */}
+          <button
+            onClick={() => setModalImportar(true)}
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs"
+          >
+            <Upload size={15} />
+            <span>Importar Catálogo</span>
+          </button>
+
+          {/* Botón Nuevo Producto */}
           <button
             onClick={abrirCrear}
-            className="btn-primary flex items-center gap-2 py-2 px-4 text-sm"
+            className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-xs font-bold shadow-md"
           >
-            <Plus size={18} />
+            <Plus size={16} />
             <span>Nuevo Producto</span>
           </button>
         </div>
@@ -326,14 +423,14 @@ export default function InventarioPage() {
         <div className="relative flex-1 min-w-48">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
           <input
-            className="input-field pl-9 py-2"
+            className="input-field pl-9 py-2 text-xs"
             value={busqueda}
             onChange={e => handleBusquedaChange(e.target.value)}
             placeholder="Buscar por nombre, código, barra, principio activo..."
           />
           {busqueda && (
             <button
-              onClick={() => { setBusqueda(''); cargarDatos('', catFiltro) }}
+              onClick={() => { setBusqueda(''); setPagina(1); cargarDatos('', catFiltro, 1, limite) }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
             >
               <X size={14} />
@@ -342,11 +439,11 @@ export default function InventarioPage() {
         </div>
 
         <select
-          className="input-field w-auto py-2 font-medium"
+          className="input-field w-auto py-2 text-xs font-medium"
           value={catFiltro}
           onChange={e => handleCategoriaChange(e.target.value)}
         >
-          <option value="">Todas las categorías ({totalCatalogo})</option>
+          <option value="">Todas las categorías ({totalProductos})</option>
           {categorias.map(c => (
             <option key={c.id} value={c.id}>
               {c.nombre} ({c.total_productos || 0})
@@ -356,107 +453,184 @@ export default function InventarioPage() {
       </div>
 
       {/* ── Tabla de Productos ─────────────────────────────────────── */}
-      <div className="card p-0 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-dark-700 bg-dark-800/80">
-            <tr className="text-dark-500 text-left text-xs font-semibold uppercase tracking-wider">
-              <th className="px-4 py-3">Código</th>
-              <th className="px-4 py-3">Producto / Presentación</th>
-              <th className="px-4 py-3">Categoría / Marca</th>
-              <th className="px-4 py-3 text-right">P. Venta</th>
-              <th className="px-4 py-3 text-right">P. Costo</th>
-              <th className="px-4 py-3 text-right">Stock Actual</th>
-              <th className="px-4 py-3 text-center">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dark-700">
-            {cargando ? (
-              <tr>
-                <td colSpan={7} className="text-center py-10 text-dark-500">
-                  Cargando productos...
-                </td>
+      <div className="card p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-dark-700 bg-dark-800/80">
+              <tr className="text-dark-500 text-left text-xs font-semibold uppercase tracking-wider">
+                <th className="px-4 py-3">Código</th>
+                <th className="px-4 py-3">Producto / Presentación</th>
+                <th className="px-4 py-3">Categoría / Marca</th>
+                <th className="px-4 py-3 text-right">P. Venta</th>
+                <th className="px-4 py-3 text-right">P. Costo</th>
+                <th className="px-4 py-3 text-right">Stock Actual</th>
+                <th className="px-4 py-3 text-center">Acciones</th>
               </tr>
-            ) : filtrados.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-10 text-dark-500">
-                  No se encontraron productos. Crea uno nuevo o importa un archivo Excel.
-                </td>
-              </tr>
-            ) : (
-              filtrados.map(p => {
-                const stockBajo = parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo)
-                return (
-                  <tr key={p.id} className="hover:bg-dark-700/40 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs text-dark-400">
-                      <div>{p.codigo}</div>
-                      {p.codigo_barras && (
-                        <div className="text-[10px] text-dark-500">{p.codigo_barras}</div>
-                      )}
-                    </td>
+            </thead>
+            <tbody className="divide-y divide-dark-700">
+              {cargando ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-dark-500">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                      <span>Cargando productos...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filtrados.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-dark-500">
+                    No se encontraron productos. Crea uno nuevo o importa un archivo Excel.
+                  </td>
+                </tr>
+              ) : (
+                filtrados.map(p => {
+                  const stockBajo = parseFloat(p.stock_actual) <= parseFloat(p.stock_minimo)
+                  return (
+                    <tr key={p.id} className="hover:bg-dark-700/40 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-dark-400">
+                        <div>{p.codigo}</div>
+                        {p.codigo_barras && (
+                          <div className="text-[10px] text-dark-500">{p.codigo_barras}</div>
+                        )}
+                      </td>
 
-                    <td className="px-4 py-3">
-                      <div className="text-white font-medium">{p.nombre}</div>
-                      {p.maneja_fracciones ? (
-                        <div className="text-xs text-primary-400 font-mono mt-0.5">
-                          📦 Caja x{p.contenido_caja} ({formatCOP(p.precio_caja)})
-                          {p.contenido_blister > 0 && ` · 📑 Blister x${Math.floor(p.contenido_caja / p.contenido_blister)} (${formatCOP(p.precio_blister)})`}
-                          {p.precio_unidad > 0 && ` · 💊 Unid (${formatCOP(p.precio_unidad)})`}
+                      <td className="px-4 py-3">
+                        <div className="text-white font-medium">{p.nombre}</div>
+                        {p.maneja_fracciones ? (
+                          <div className="text-xs text-primary-400 font-mono mt-0.5">
+                            📦 Caja x{p.contenido_caja} ({formatCOP(p.precio_caja)})
+                            {p.contenido_blister > 0 && ` · 📑 Blister x${Math.floor(p.contenido_caja / p.contenido_blister)} (${formatCOP(p.precio_blister)})`}
+                            {p.precio_unidad > 0 && ` · 💊 Unid (${formatCOP(p.precio_unidad)})`}
+                          </div>
+                        ) : p.principio_activo ? (
+                          <div className="text-xs text-dark-500 italic">{p.principio_activo}</div>
+                        ) : null}
+                      </td>
+
+                      <td className="px-4 py-3 text-dark-400 text-xs">
+                        <div>{p.categoria_nombre || 'General'}</div>
+                        {p.laboratorio && (
+                          <div className="text-dark-500 text-[11px]">{p.laboratorio}</div>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3 text-right font-semibold text-primary-400">
+                        {formatCOP(p.precio_venta)}
+                      </td>
+
+                      <td className="px-4 py-3 text-right text-dark-400">
+                        {formatCOP(p.precio_costo)}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {renderStock(p)}
+                        {stockBajo && (
+                          <div className="text-right">
+                            <span className="badge-warning text-[10px] py-0.5 px-1.5 inline-block mt-0.5">
+                              Stock Bajo
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => abrirEditar(p)}
+                            className="p-1.5 text-dark-500 hover:text-white hover:bg-dark-600 rounded-lg"
+                            title="Editar"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleEliminarProducto(p)}
+                            className="p-1.5 text-dark-500 hover:text-red-400 hover:bg-dark-600 rounded-lg"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                      ) : p.principio_activo ? (
-                        <div className="text-xs text-dark-500 italic">{p.principio_activo}</div>
-                      ) : null}
-                    </td>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                    <td className="px-4 py-3 text-dark-400 text-xs">
-                      <div>{p.categoria_nombre || 'General'}</div>
-                      {p.laboratorio && (
-                        <div className="text-dark-500 text-[11px]">{p.laboratorio}</div>
-                      )}
-                    </td>
+        {/* ── BARRA DE PAGINACIÓN ───────────────────────────────────── */}
+        {totalProductos > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-dark-800/90 border-t border-dark-700 text-xs text-dark-400">
+            <div>
+              Mostrando{' '}
+              <strong className="text-white font-mono">
+                {((pagina - 1) * limite) + 1} - {Math.min(pagina * limite, totalProductos)}
+              </strong>{' '}
+              de <strong className="text-white font-mono">{totalProductos.toLocaleString()}</strong> productos
+            </div>
 
-                    <td className="px-4 py-3 text-right font-semibold text-primary-400">
-                      {formatCOP(p.precio_venta)}
-                    </td>
+            <div className="flex items-center gap-4">
+              {/* Selector de límite por página */}
+              <div className="flex items-center gap-1.5">
+                <span>Por pág:</span>
+                <select
+                  value={limite}
+                  onChange={e => cambiarLimite(e.target.value)}
+                  className="bg-dark-700 border border-dark-600 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                </select>
+              </div>
 
-                    <td className="px-4 py-3 text-right text-dark-400">
-                      {formatCOP(p.precio_costo)}
-                    </td>
+              {/* Botones de navegación de página */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => cambiarPagina(1)}
+                  disabled={pagina === 1}
+                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  title="Primera página"
+                >
+                  <ChevronsLeft size={16} />
+                </button>
+                <button
+                  onClick={() => cambiarPagina(pagina - 1)}
+                  disabled={pagina === 1}
+                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  title="Página anterior"
+                >
+                  <ChevronLeft size={16} />
+                </button>
 
-                    <td className="px-4 py-3">
-                      {renderStock(p)}
-                      {stockBajo && (
-                        <div className="text-right">
-                          <span className="badge-warning text-[10px] py-0.5 px-1.5 inline-block mt-0.5">
-                            Stock Bajo
-                          </span>
-                        </div>
-                      )}
-                    </td>
+                <span className="px-2 font-medium">
+                  Página <strong className="text-white font-mono">{pagina}</strong> de{' '}
+                  <strong className="text-white font-mono">{totalPaginas}</strong>
+                </span>
 
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => abrirEditar(p)}
-                          className="p-1.5 text-dark-500 hover:text-white hover:bg-dark-600 rounded-lg"
-                          title="Editar"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleEliminarProducto(p)}
-                          className="p-1.5 text-dark-500 hover:text-red-400 hover:bg-dark-600 rounded-lg"
-                          title="Eliminar"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
+                <button
+                  onClick={() => cambiarPagina(pagina + 1)}
+                  disabled={pagina >= totalPaginas}
+                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  title="Página siguiente"
+                >
+                  <ChevronRight size={16} />
+                </button>
+                <button
+                  onClick={() => cambiarPagina(totalPaginas)}
+                  disabled={pagina >= totalPaginas}
+                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  title="Última página"
+                >
+                  <ChevronsRight size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── MODAL: CREAR / EDITAR PRODUCTO (1 a 1) ────────────────── */}
@@ -717,14 +891,7 @@ export default function InventarioPage() {
                       value={formProducto.stock_actual}
                       onChange={e => setFormProducto({ ...formProducto, stock_actual: e.target.value })}
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-dark-500 mb-1">Stock Mínimo de Alerta</label>
-                    <input
-                      type="number"
-                      step="any"
-                      className="input-field"
+className="input-field"
                       value={formProducto.stock_minimo}
                       onChange={e => setFormProducto({ ...formProducto, stock_minimo: e.target.value })}
                     />
@@ -891,6 +1058,266 @@ export default function InventarioPage() {
               >
                 Guardar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CONCILIACIÓN & AJUSTE DE INVENTARIO FÍSICO ──────── */}
+      {modalAjusteFisico && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setModalAjusteFisico(false)}
+        >
+          <div
+            className="bg-dark-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-dark-700 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header del Modal */}
+            <div className="p-4 border-b border-dark-700 flex justify-between items-center bg-dark-900/40">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Scale size={20} className="text-amber-400" />
+                  Conciliación & Ajuste de Inventario Físico
+                </h3>
+                <p className="text-dark-500 text-xs mt-0.5">
+                  Compara el conteo físico real contra el sistema, detecta desfases y actualiza el stock
+                </p>
+              </div>
+              <button
+                onClick={() => setModalAjusteFisico(false)}
+                className="text-dark-500 hover:text-white p-1 rounded-lg hover:bg-dark-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 overflow-y-auto space-y-5">
+              {!resumenAjuste ? (
+                /* PASO 1: SUBIR ARCHIVO */
+                <div className="space-y-4">
+                  <div className="bg-dark-900/60 p-4 rounded-xl border border-dark-700 text-xs space-y-2">
+                    <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
+                      📋 Instrucciones para la toma de inventario físico:
+                    </div>
+                    <p className="text-dark-300">
+                      1. Descarga la <b>Hoja de Toma Física (.xlsx)</b> con el inventario actual.
+                    </p>
+                    <p className="text-dark-300">
+                      2. Diligencia el <b>conteo real en las columnas amarillas</b> (Cajas/Blisters/Unidades o Conteo Físico).
+                    </p>
+                    <p className="text-dark-300">
+                      3. Sube el archivo aquí. El sistema calculará automáticamente las diferencias (desfases) y actualizará el stock digital.
+                    </p>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={handleDescargarTomaFisica}
+                        className="text-primary-400 hover:text-primary-300 font-semibold underline inline-flex items-center gap-1"
+                      >
+                        <Download size={13} /> Descargar Hoja de Toma Física ahora (.xlsx)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dropzone */}
+                  <div
+                    onClick={() => fileAjusteRef.current?.click()}
+                    className="border-2 border-dashed border-dark-600 hover:border-amber-500 rounded-2xl p-8 text-center cursor-pointer transition-colors bg-dark-900/40"
+                  >
+                    <input
+                      type="file"
+                      ref={fileAjusteRef}
+                      onChange={e => setArchivoAjuste(e.target.files[0])}
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                    />
+                    <FileSpreadsheet size={36} className="mx-auto text-amber-400 mb-2" />
+                    {archivoAjuste ? (
+                      <div className="text-white text-sm font-medium">
+                        {archivoAjuste.name}
+                        <span className="text-dark-500 block text-xs mt-0.5">
+                          ({(archivoAjuste.size / 1024).toFixed(1)} KB) — Clic para cambiar archivo
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-white text-sm font-bold">Seleccionar archivo Excel de Conteo Físico</p>
+                        <p className="text-dark-500 text-xs mt-1">Formato .xlsx o .xls con el conteo diligenciado</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setModalAjusteFisico(false)}
+                      className="btn-secondary flex-1 py-2.5 text-xs font-semibold"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSubirAjusteFisico}
+                      disabled={!archivoAjuste || ajustandoFisico}
+                      className="btn-primary flex-1 py-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-600"
+                    >
+                      {ajustandoFisico ? 'Calculando y actualizando...' : '⚖️ Procesar y Ajustar Inventario'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* PASO 2: RESUMEN DE CONCILIACIÓN & REPORTE DE DESFASES */
+                <div className="space-y-5">
+                  {/* Tarjetas de Estadísticas */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    <div className="bg-dark-900/80 p-3 rounded-xl border border-dark-700 text-center">
+                      <span className="text-[11px] text-dark-500 block">Total Contados</span>
+                      <span className="text-base font-bold text-white font-mono">{resumenAjuste.total_contados}</span>
+                    </div>
+
+                    <div className="bg-dark-900/80 p-3 rounded-xl border border-dark-700 text-center">
+                      <span className="text-[11px] text-dark-500 block">Exactos / Coincidentes</span>
+                      <span className="text-base font-bold text-green-400 font-mono">{resumenAjuste.total_coincidentes}</span>
+                    </div>
+
+                    <div className="bg-dark-900/80 p-3 rounded-xl border border-dark-700 text-center">
+                      <span className="text-[11px] text-dark-500 block">Sobrantes (+)</span>
+                      <span className="text-base font-bold text-blue-400 font-mono">+{resumenAjuste.sobrantes}</span>
+                    </div>
+
+                    <div className="bg-dark-900/80 p-3 rounded-xl border border-dark-700 text-center">
+                      <span className="text-[11px] text-dark-500 block">Faltantes (-)</span>
+                      <span className="text-base font-bold text-red-400 font-mono">-{resumenAjuste.faltantes}</span>
+                    </div>
+
+                    <div className="col-span-2 sm:col-span-1 bg-dark-900/80 p-3 rounded-xl border border-dark-700 text-center">
+                      <span className="text-[11px] text-dark-500 block">Impacto Neto ($)</span>
+                      <span className={`text-xs font-bold font-mono ${resumenAjuste.impacto_total_costo >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {formatCOP(resumenAjuste.impacto_total_costo)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Mensaje de confirmación */}
+                  <div className="bg-green-950/40 border border-green-800/60 rounded-xl p-3 flex items-center gap-2 text-xs text-green-300">
+                    <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
+                    <span>
+                      <b>¡Inventario Físico Conciliado!</b> Se actualizaron <b>{resumenAjuste.total_ajustados}</b> productos con diferencias en la base de datos.
+                    </span>
+                  </div>
+
+                  {/* Tabla de Desfases */}
+                  {resumenAjuste.desfases && resumenAjuste.desfases.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Detalle de Discrepancias ({resumenAjuste.desfases.length})
+                        </h4>
+
+                        {/* Filtros rápidos */}
+                        <div className="flex gap-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setFiltroDesfase('TODOS')}
+                            className={`px-2 py-0.5 rounded font-medium ${
+                              filtroDesfase === 'TODOS' ? 'bg-dark-600 text-white' : 'text-dark-500 hover:text-white'
+                            }`}
+                          >
+                            Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroDesfase('SOBRANTES')}
+                            className={`px-2 py-0.5 rounded font-medium ${
+                              filtroDesfase === 'SOBRANTES' ? 'bg-blue-900/60 text-blue-300' : 'text-dark-500 hover:text-white'
+                            }`}
+                          >
+                            🟢 Sobrantes ({resumenAjuste.sobrantes})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroDesfase('FALTANTES')}
+                            className={`px-2 py-0.5 rounded font-medium ${
+                              filtroDesfase === 'FALTANTES' ? 'bg-red-900/60 text-red-300' : 'text-dark-500 hover:text-white'
+                            }`}
+                          >
+                            🔴 Faltantes ({resumenAjuste.faltantes})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="card p-0 overflow-x-auto max-h-64 overflow-y-auto border border-dark-700">
+                        <table className="w-full text-xs">
+                          <thead className="bg-dark-900 text-dark-500 text-left sticky top-0 border-b border-dark-700">
+                            <tr>
+                              <th className="px-3 py-2">Código</th>
+                              <th className="px-3 py-2">Producto</th>
+                              <th className="px-3 py-2 text-right">Stock Anterior</th>
+                              <th className="px-3 py-2 text-right">Físico Real</th>
+                              <th className="px-3 py-2 text-right">Desfase</th>
+                              <th className="px-3 py-2 text-right">Impacto Costo</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-dark-700/60 font-mono">
+                            {resumenAjuste.desfases
+                              .filter(d => {
+                                if (filtroDesfase === 'SOBRANTES') return d.desfase > 0
+                                if (filtroDesfase === 'FALTANTES') return d.desfase < 0
+                                return true
+                              })
+                              .map(d => {
+                                const esSobrante = d.desfase > 0
+                                return (
+                                  <tr key={d.id} className="hover:bg-dark-700/30">
+                                    <td className="px-3 py-2 text-dark-400">{d.codigo}</td>
+                                    <td className="px-3 py-2 font-sans font-medium text-white max-w-xs truncate">
+                                      {d.nombre}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-dark-400">{d.stock_digital}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-white">{d.conteo_fisico}</td>
+                                    <td className="px-3 py-2 text-right">
+                                      <span className={`px-1.5 py-0.5 rounded font-bold text-[11px] ${
+                                        esSobrante
+                                          ? 'bg-blue-950/60 text-blue-300 border border-blue-800/60'
+                                          : 'bg-red-950/60 text-red-300 border border-red-800/60'
+                                      }`}>
+                                        {esSobrante ? `+${d.desfase}` : d.desfase}
+                                      </span>
+                                    </td>
+                                    <td className={`px-3 py-2 text-right font-bold ${
+                                      esSobrante ? 'text-blue-400' : 'text-red-400'
+                                    }`}>
+                                      {formatCOP(d.impacto_costo)}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => { setResumenAjuste(null); setArchivoAjuste(null) }}
+                      className="btn-secondary flex-1 py-2.5 text-xs"
+                    >
+                      ← Cargar otro archivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalAjusteFisico(false)}
+                      className="btn-primary flex-1 py-2.5 text-xs font-bold"
+                    >
+                      ✓ Finalizar y Cerrar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

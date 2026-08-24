@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import joinedload
 
+import math
 from app.db.database import get_db
 from app.core.deps import get_current_user
 from app.models.producto import Producto, Categoria, UnidadMedida
-from app.schemas.ventas import ProductoCreate, ProductoUpdate, ProductoOut
+from app.schemas.ventas import ProductoCreate, ProductoUpdate, ProductoOut, PaginatedProductosOut
+from app.services.inventario_service import generar_excel_inventario_fisico, procesar_ajuste_inventario_fisico
 
 router = APIRouter(prefix="/productos", tags=["Productos"])
 
@@ -170,23 +172,18 @@ async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=
     )
     result = await db.execute(stmt)
     p = result.scalar_one_or_none()
-    if not p:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
     return _to_out(p)
 
-@router.get("", response_model=List[ProductoOut])
+@router.get("", response_model=PaginatedProductosOut)
 async def listar_productos(
     categoria_id: Optional[int] = None,
     q: Optional[str] = None,
     activo: Optional[bool] = True,
-    limite: int = Query(200, le=1000),
+    pagina: int = Query(1, ge=1),
+    limite: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = (
-        select(Producto)
-        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
-    )
     condiciones = []
     if activo is not None:
         condiciones.append(Producto.activo == activo)
@@ -202,11 +199,80 @@ async def listar_productos(
                 Producto.laboratorio.ilike(f"%{q.strip()}%"),
             )
         )
+
+    # 1. Conteo total para paginación
+    count_stmt = select(func.count(Producto.id))
+    if condiciones:
+        count_stmt = count_stmt.where(*condiciones)
+    res_count = await db.execute(count_stmt)
+    total = res_count.scalar() or 0
+
+    # 2. Consulta paginada
+    offset = (pagina - 1) * limite
+    query = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+    )
     if condiciones:
         query = query.where(*condiciones)
 
-    result = await db.execute(query.order_by(Producto.id.desc()).limit(limite))
-    return [_to_out(p) for p in result.scalars().unique().all()]
+    result = await db.execute(query.order_by(Producto.id.desc()).offset(offset).limit(limite))
+    productos = result.scalars().unique().all()
+    total_paginas = math.ceil(total / limite) if total > 0 else 1
+
+    return PaginatedProductosOut(
+        items=[_to_out(p) for p in productos],
+        total=total,
+        pagina=pagina,
+        limite=limite,
+        total_paginas=total_paginas,
+    )
+
+# ─── EXPORTACIÓN PARA TOMA DE INVENTARIO FÍSICO ────────────────────────────────
+
+@router.get("/exportar-inventario-fisico")
+async def exportar_inventario_fisico(
+    categoria_id: Optional[int] = None,
+    q: Optional[str] = None,
+    solo_con_stock: Optional[bool] = False,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    excel_stream = await generar_excel_inventario_fisico(
+        db=db,
+        categoria_id=categoria_id,
+        q=q,
+        solo_con_stock=solo_con_stock,
+    )
+    from datetime import datetime
+    fecha_slug = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"Inventario_Fisico_Toma_{fecha_slug}.xlsx"
+
+    return StreamingResponse(
+        excel_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+# ─── CARGUE Y AJUSTE DE INVENTARIO FÍSICO (DESFASE & CONCILIACIÓN) ───────────
+
+@router.post("/ajustar-inventario-fisico")
+async def ajustar_inventario_fisico(
+    archivo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    contenido = await archivo.read()
+    try:
+        resultado = await procesar_ajuste_inventario_fisico(
+            contenido_bytes=contenido,
+            db=db,
+        )
+        return resultado
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error ajustando inventario físico: {str(e)}")
 
 @router.post("", response_model=ProductoOut)
 async def crear_producto(
