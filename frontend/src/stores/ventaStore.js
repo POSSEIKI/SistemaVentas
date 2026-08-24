@@ -5,8 +5,8 @@ export const useVentaStore = create((set, get) => ({
   formaPago: 'EFECTIVO',
   valorRecibido: 0,
   domicilioValor: 0,
-  clienteId: null,
-  clienteNombre: '',
+  clienteId: 1,
+  clienteNombre: 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
   observaciones: '',
 
   // ─── Agregar producto con soporte de presentación / fracción ──────────────
@@ -154,8 +154,8 @@ export const useVentaStore = create((set, get) => ({
     formaPago: 'EFECTIVO',
     valorRecibido: 0,
     domicilioValor: 0,
-    clienteId: null,
-    clienteNombre: '',
+    clienteId: 1,
+    clienteNombre: 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
     observaciones: '',
   }),
 }))

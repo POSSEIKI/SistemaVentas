@@ -87,21 +87,61 @@ export default function VentasPage() {
     window._busqTimer = setTimeout(() => buscarProducto(val, modoBusqueda), 250)
   }
 
+  const [vistaModalCliente, setVistaModalCliente] = useState('BUSCAR') // 'BUSCAR' | 'CREAR'
+  const [formNuevoCliente, setFormNuevoCliente] = useState({
+    tipo_doc: 'CC',
+    nit: '',
+    nombre: '',
+    telefono: '',
+    direccion: '',
+    ciudad: '',
+    email: '',
+  })
+  const [guardandoCliente, setGuardandoCliente] = useState(false)
+
   const buscarClientes = async (q) => {
     setBusqCliente(q)
-    if (!q.trim()) { setClientes([]); return }
     try {
       const res = await clientesApi.listar(q)
       setClientes(res)
     } catch {}
   }
 
-  const handleCobrar = async () => {
-    if (store.lineas.length === 0) { toast.error('Agrega productos primero'); return }
-    if (!store.clienteId) { toast.error('Selecciona un cliente'); return }
-    if (['CREDITO', 'CONTRAENTREGA'].includes(store.formaPago) && !store.clienteId) {
-      toast.error('Se requiere cliente para esta forma de pago'); return
+  const handleCrearClienteRapido = async (e) => {
+    e.preventDefault()
+    if (!formNuevoCliente.nombre.trim()) { toast.error('El nombre del cliente es obligatorio'); return }
+    if (!formNuevoCliente.nit.trim()) { toast.error('El número de documento (Cédula/NIT) es obligatorio'); return }
+
+    setGuardandoCliente(true)
+    try {
+      const nuevo = await clientesApi.crear(formNuevoCliente)
+      toast.success(`Cliente "${nuevo.nombre}" creado y asignado`)
+      store.setCliente(nuevo.id, nuevo.nombre)
+      setModalCliente(false)
+      setVistaModalCliente('BUSCAR')
+      setFormNuevoCliente({ tipo_doc: 'CC', nit: '', nombre: '', telefono: '', direccion: '', ciudad: '', email: '' })
+      buscarClientes('')
+    } catch (err) {
+      toast.error(err.message || 'Error creando cliente')
+    } finally {
+      setGuardandoCliente(false)
     }
+  }
+
+  const handleCobrar = async () => {
+    if (store.lineas.length === 0) { toast.error('Agrega productos al carrito primero'); return }
+    
+    // Si no hay cliente seleccionado, asignar automáticamente Cliente Mostrador
+    if (!store.clienteId) {
+      store.setCliente(1, 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)')
+    }
+
+    if (store.formaPago === 'CREDITO' && (!store.clienteId || store.clienteId === 1)) {
+      toast.error('Para ventas a crédito se requiere registrar o seleccionar un cliente con documento');
+      setModalCliente(true);
+      return
+    }
+
     setCobrando(true)
     try {
       const res = await facturasApi.crear(store.buildPayload())
@@ -498,48 +538,257 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* ── MODAL: SELECTOR DE CLIENTE ────────────────────────────── */}
+      {/* ── MODAL: SELECTOR Y CREADOR DE CLIENTE ─────────────────── */}
       {modalCliente && (
         <div
-          className="fixed inset-0 bg-black/75 z-50 flex items-end md:items-center justify-center p-4"
+          className="fixed inset-0 bg-black/75 z-50 flex items-end md:items-center justify-center p-4 overflow-y-auto"
           onClick={() => setModalCliente(false)}
         >
           <div
-            className="bg-dark-800 rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col border border-dark-700 shadow-2xl"
+            className="bg-dark-800 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col border border-dark-700 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-dark-700">
-              <h3 className="text-white font-semibold mb-3">Seleccionar cliente</h3>
-              <input
-                className="input-field"
-                placeholder="Buscar por nombre o documento..."
-                value={busqCliente}
-                onChange={e => buscarClientes(e.target.value)}
-                autoFocus
-              />
+            {/* Header del Modal */}
+            <div className="p-4 border-b border-dark-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <User size={18} className="text-primary-400" />
+                  Cliente de la Venta
+                </h3>
+                <p className="text-dark-500 text-xs mt-0.5">
+                  Selecciona cliente mostrador o ingresa datos para factura legal y domicilio
+                </p>
+              </div>
+              <button
+                onClick={() => setModalCliente(false)}
+                className="text-dark-500 hover:text-white p-1"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div className="overflow-auto flex-1 divide-y divide-dark-700">
-              {clientes.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    store.setCliente(c.id, c.nombre)
-                    setModalCliente(false)
-                    setBusqCliente('')
-                    setClientes([])
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-3
-                             hover:bg-dark-700 text-left transition-colors"
-                >
+
+            {/* Acceso Rápido: CLIENTE MOSTRADOR */}
+            <div className="p-4 bg-dark-900/60 border-b border-dark-700">
+              <button
+                onClick={() => {
+                  store.setCliente(1, 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)')
+                  setModalCliente(false)
+                }}
+                className="w-full flex items-center justify-between p-3 bg-primary-950/40 hover:bg-primary-900/50 border border-primary-600/50 hover:border-primary-500 rounded-xl transition-all"
+              >
+                <div className="flex items-center gap-2.5 text-left">
+                  <span className="text-xl">⚡</span>
                   <div>
-                    <p className="text-white text-sm font-medium">{c.nombre}</p>
-                    <p className="text-dark-500 text-xs">{c.nit || c.telefono || '—'}</p>
+                    <p className="text-white font-bold text-sm">CLIENTE MOSTRADOR</p>
+                    <p className="text-primary-300 text-xs">Consumidor Final (Sin datos personales)</p>
                   </div>
-                  <span className="text-xs text-primary-400 font-semibold">Seleccionar</span>
-                </button>
-              ))}
-              {busqCliente && clientes.length === 0 && (
-                <p className="text-dark-500 text-sm text-center py-6">No se encontraron clientes</p>
+                </div>
+                <span className="text-xs bg-primary-600 text-white font-bold px-2.5 py-1 rounded-lg">
+                  Seleccionar
+                </span>
+              </button>
+            </div>
+
+            {/* Pestañas de Buscar / Crear */}
+            <div className="flex border-b border-dark-700 bg-dark-900/30">
+              <button
+                type="button"
+                onClick={() => setVistaModalCliente('BUSCAR')}
+                className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-all ${
+                  vistaModalCliente === 'BUSCAR'
+                    ? 'border-primary-500 text-primary-400 bg-dark-700/50'
+                    : 'border-transparent text-dark-400 hover:text-white'
+                }`}
+              >
+                🔍 Buscar Registrado
+              </button>
+              <button
+                type="button"
+                onClick={() => setVistaModalCliente('CREAR')}
+                className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-all ${
+                  vistaModalCliente === 'CREAR'
+                    ? 'border-primary-500 text-primary-400 bg-dark-700/50'
+                    : 'border-transparent text-dark-400 hover:text-white'
+                }`}
+              >
+                ➕ Crear Nuevo Cliente
+              </button>
+            </div>
+
+            {/* Contenido de la pestaña */}
+            <div className="overflow-y-auto flex-1 p-4">
+              {vistaModalCliente === 'BUSCAR' ? (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
+                    <input
+                      className="input-field pl-9"
+                      placeholder="Buscar por Nombre, Cédula / NIT o Teléfono..."
+                      value={busqCliente}
+                      onChange={e => buscarClientes(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="divide-y divide-dark-700 max-h-60 overflow-y-auto">
+                    {clientes.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          store.setCliente(c.id, c.nombre)
+                          setModalCliente(false)
+                        }}
+                        className="w-full flex items-center justify-between p-3 hover:bg-dark-700 text-left transition-colors rounded-lg"
+                      >
+                        <div>
+                          <p className="text-white text-sm font-semibold">{c.nombre}</p>
+                          <p className="text-dark-500 text-xs">
+                            {c.tipo_doc || 'CC'}: <span className="font-mono text-dark-400">{c.nit || '—'}</span>
+                            {c.telefono && ` · 📞 ${c.telefono}`}
+                          </p>
+                          {c.direccion && (
+                            <p className="text-dark-500 text-[11px] truncate max-w-xs">
+                              📍 {c.direccion}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-xs text-primary-400 font-bold ml-2">Elegir</span>
+                      </button>
+                    ))}
+                    {busqCliente && clientes.length === 0 && (
+                      <div className="text-center py-6 space-y-2">
+                        <p className="text-dark-500 text-xs">No se encontró ningún cliente con ese dato.</p>
+                        <button
+                          onClick={() => {
+                            setFormNuevoCliente(f => ({ ...f, nombre: busqCliente }))
+                            setVistaModalCliente('CREAR')
+                          }}
+                          className="btn-secondary text-xs py-1.5 px-3"
+                        >
+                          + Registrar como nuevo cliente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* FORMULARIO: CREAR NUEVO CLIENTE LEGAL + DOMICILIO */
+                <form onSubmit={handleCrearClienteRapido} className="space-y-4">
+                  {/* 1. Datos Legales Obligatorios */}
+                  <div className="space-y-2.5">
+                    <span className="text-xs font-bold text-primary-400 uppercase tracking-wider block">
+                      1. Datos Legales de Facturación
+                    </span>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-dark-500 mb-1">Tipo Doc *</label>
+                        <select
+                          className="input-field py-1.5 text-xs font-medium"
+                          value={formNuevoCliente.tipo_doc}
+                          onChange={e => setFormNuevoCliente({ ...formNuevoCliente, tipo_doc: e.target.value })}
+                        >
+                          <option value="CC">Cédula (CC)</option>
+                          <option value="NIT">NIT (Empresa)</option>
+                          <option value="CE">Cédula Extranjería (CE)</option>
+                          <option value="TI">Tarjeta Identidad (TI)</option>
+                          <option value="PAS">Pasaporte</option>
+                        </select>
+                      </div>
+
+                      <div className="col-span-2">
+                        <label className="block text-[11px] text-dark-500 mb-1">Número de Documento / NIT *</label>
+                        <input
+                          className="input-field py-1.5 text-xs font-mono"
+                          placeholder="Ej: 1020304050"
+                          value={formNuevoCliente.nit}
+                          onChange={e => setFormNuevoCliente({ ...formNuevoCliente, nit: e.target.value })}
+                          required
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-dark-500 mb-1">Nombre Completo o Razón Social *</label>
+                      <input
+                        className="input-field py-1.5 text-xs font-medium"
+                        placeholder="Ej: Carlos Mario Restrepo o Distribuidora El Sol SAS"
+                        value={formNuevoCliente.nombre}
+                        onChange={e => setFormNuevoCliente({ ...formNuevoCliente, nombre: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. Datos de Contacto y Despacho */}
+                  <div className="space-y-2.5 pt-2 border-t border-dark-700">
+                    <span className="text-xs font-bold text-primary-400 uppercase tracking-wider block">
+                      2. Datos de Contacto y Domicilio (Opcionales)
+                    </span>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-dark-500 mb-1">Celular / WhatsApp</label>
+                        <input
+                          type="tel"
+                          className="input-field py-1.5 text-xs"
+                          placeholder="3101234567"
+                          value={formNuevoCliente.telefono}
+                          onChange={e => setFormNuevoCliente({ ...formNuevoCliente, telefono: e.target.value })}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-dark-500 mb-1">Ciudad / Municipio</label>
+                        <input
+                          className="input-field py-1.5 text-xs"
+                          placeholder="Ej: Medellín"
+                          value={formNuevoCliente.ciudad}
+                          onChange={e => setFormNuevoCliente({ ...formNuevoCliente, ciudad: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-dark-500 mb-1">Dirección de Entrega / Domicilio</label>
+                      <input
+                        className="input-field py-1.5 text-xs"
+                        placeholder="Cra 45 # 23-10 Apto 302, Barrio El Poblado"
+                        value={formNuevoCliente.direccion}
+                        onChange={e => setFormNuevoCliente({ ...formNuevoCliente, direccion: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] text-dark-500 mb-1">Correo Electrónico (Factura Digital)</label>
+                      <input
+                        type="email"
+                        className="input-field py-1.5 text-xs"
+                        placeholder="cliente@ejemplo.com"
+                        value={formNuevoCliente.email}
+                        onChange={e => setFormNuevoCliente({ ...formNuevoCliente, email: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setVistaModalCliente('BUSCAR')}
+                      className="btn-secondary flex-1 py-2 text-xs"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={guardandoCliente}
+                      className="btn-primary flex-1 py-2 text-xs font-bold"
+                    >
+                      {guardandoCliente ? 'Guardando...' : '✓ Guardar y Asignar'}
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
           </div>
