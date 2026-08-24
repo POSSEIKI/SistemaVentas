@@ -272,6 +272,18 @@ export default function InventarioPage() {
     }
     const unidadesSueltas = resto
 
+    return (
+      <div className="text-right">
+        <div className="text-primary-300 font-medium text-xs">
+          {cajas > 0 && <span className="mr-1">{cajas} Cj</span>}
+          {blisters > 0 && <span className="mr-1">{blisters} Bl</span>}
+          <span>{unidadesSueltas} Und</span>
+        </div>
+        <span className="text-dark-500 text-[11px]">({stockTotal} total)</span>
+      </div>
+    )
+  }
+
   const totalCatalogo = categorias.reduce((acc, c) => acc + (c.total_productos || 0), 0)
   const filtrados = productos
 
