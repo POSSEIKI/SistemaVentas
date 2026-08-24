@@ -99,6 +99,17 @@ class ClienteCreate(BaseModel):
     ciudad: Optional[str] = None
     notas: Optional[str] = None
 
+class ClienteUpdate(BaseModel):
+    nombre: Optional[str] = None
+    nit: Optional[str] = None
+    tipo_doc: Optional[str] = None
+    direccion: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    ciudad: Optional[str] = None
+    notas: Optional[str] = None
+    activo: Optional[bool] = None
+
 class ClienteOut(BaseModel):
     id: int
     nombre: str
@@ -108,6 +119,7 @@ class ClienteOut(BaseModel):
     telefono: Optional[str] = None
     email: Optional[str] = None
     ciudad: Optional[str] = None
+    notas: Optional[str] = None
     activo: bool
     model_config = {"from_attributes": True}
 

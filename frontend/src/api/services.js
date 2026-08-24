@@ -24,8 +24,11 @@ export const productosApi = {
 
 export const clientesApi = {
   listar: (q) => api.get('/clientes', { params: q ? { q } : {} }).then(r => r.data),
+  obtener: (id) => api.get(`/clientes/${id}`).then(r => r.data),
   buscarPorNit: (nit) => api.get(`/clientes/buscar-nit/${nit}`).then(r => r.data),
   crear: (datos) => api.post('/clientes', datos).then(r => r.data),
+  actualizar: (id, datos) => api.patch(`/clientes/${id}`, datos).then(r => r.data),
+  eliminar: (id) => api.delete(`/clientes/${id}`).then(r => r.data),
   crearOEncontrar: (datos) => api.post('/clientes/crear-o-encontrar', datos).then(r => r.data),
 }
 

@@ -5,7 +5,7 @@ from app.db.database import get_db
 from app.core.deps import get_current_user
 from app.models.cliente import Cliente
 from app.models.factura import Factura, FacturaDetalle
-from app.schemas.ventas import ClienteCreate, ClienteOut, FacturaCreate, FacturaOut, AnularFacturaRequest
+from app.schemas.ventas import ClienteCreate, ClienteUpdate, ClienteOut, FacturaCreate, FacturaOut, AnularFacturaRequest
 from app.services import venta_service
 from typing import List, Optional
 from datetime import date
@@ -26,9 +26,19 @@ async def listar_clientes(
             Cliente.nombre.ilike(f"%{q}%"),
             Cliente.nit.ilike(f"%{q}%"),
             Cliente.telefono.ilike(f"%{q}%"),
+            Cliente.ciudad.ilike(f"%{q}%"),
+            Cliente.direccion.ilike(f"%{q}%"),
         ))
-    result = await db.execute(query.order_by(Cliente.nombre).limit(50))
+    result = await db.execute(query.order_by(Cliente.id.desc()).limit(100))
     return result.scalars().all()
+
+@router.get("/clientes/{cliente_id}", response_model=ClienteOut)
+async def get_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+    cliente = result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return cliente
 
 @router.get("/clientes/buscar-nit/{nit}", response_model=ClienteOut)
 async def buscar_cliente_nit(nit: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
@@ -40,11 +50,56 @@ async def buscar_cliente_nit(nit: str, db: AsyncSession = Depends(get_db), _=Dep
 
 @router.post("/clientes", response_model=ClienteOut)
 async def crear_cliente(datos: ClienteCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    if datos.nit and datos.nit.strip():
+        res_existente = await db.execute(select(Cliente).where(Cliente.nit == datos.nit.strip()))
+        existente = res_existente.scalar_one_or_none()
+        if existente:
+            raise HTTPException(status_code=400, detail=f"Ya existe un cliente registrado con el documento {datos.nit}")
+
     cliente = Cliente(**datos.model_dump())
     db.add(cliente)
     await db.commit()
     await db.refresh(cliente)
     return cliente
+
+@router.patch("/clientes/{cliente_id}", response_model=ClienteOut)
+async def actualizar_cliente(
+    cliente_id: int,
+    datos: ClienteUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+    cliente = result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Si se intenta cambiar el NIT, validar duplicados
+    if datos.nit and datos.nit.strip() != cliente.nit:
+        res_dup = await db.execute(select(Cliente).where(Cliente.nit == datos.nit.strip(), Cliente.id != cliente_id))
+        if res_dup.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Ya existe otro cliente con el documento {datos.nit}")
+
+    datos_dict = datos.model_dump(exclude_unset=True)
+    for campo, valor in datos_dict.items():
+        setattr(cliente, campo, valor)
+
+    await db.commit()
+    await db.refresh(cliente)
+    return cliente
+
+@router.delete("/clientes/{cliente_id}")
+async def eliminar_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    if cliente_id == 1:
+        raise HTTPException(status_code=400, detail="No se puede eliminar el Cliente Mostrador por defecto del sistema")
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+    cliente = result.scalar_one_or_none()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    cliente.activo = False
+    await db.commit()
+    return {"mensaje": "Cliente desactivado correctamente"}
 
 @router.post("/clientes/crear-o-encontrar", response_model=ClienteOut)
 async def crear_o_encontrar(datos: ClienteCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
