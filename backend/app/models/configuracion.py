@@ -21,5 +21,6 @@ class ConfiguracionEmpresa(Base):
     domicilio_corta = Column(Numeric(10, 2), default=3000)
     domicilio_media = Column(Numeric(10, 2), default=5000)
     domicilio_larga = Column(Numeric(10, 2), default=8000)
+    rubro = Column(String(50), default="FARMACIA")
     primer_inicio = Column(Boolean, default=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

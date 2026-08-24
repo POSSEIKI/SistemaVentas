@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useVentaStore } from '../stores/ventaStore'
-import { productosApi, clientesApi, facturasApi } from '../api/services'
+import { productosApi, clientesApi, facturasApi, configApi } from '../api/services'
 import {
   Search, X, Plus, Minus, Trash2, ShoppingCart,
-  User, CreditCard, Truck, Banknote, DollarSign, Package, Layers, Pill
+  User, CreditCard, Truck, Banknote, DollarSign, Package, Layers, Pill, FlaskConical, Tag
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -24,6 +24,15 @@ export default function VentasPage() {
   const [resultados, setResultados] = useState([])
   const [buscando, setBuscando] = useState(false)
   const [cobrando, setCobrando] = useState(false)
+  const [rubro, setRubro] = useState('FARMACIA')
+  const [modoBusqueda, setModoBusqueda] = useState('NOMBRE')
+
+  // Cargar configuración de rubro
+  useEffect(() => {
+    configApi.get().then(cfg => {
+      if (cfg && cfg.rubro) setRubro(cfg.rubro)
+    }).catch(() => {})
+  }, [])
 
   // Selector de fracción / presentación
   const [modalFraccion, setModalFraccion] = useState(false)
@@ -54,13 +63,13 @@ export default function VentasPage() {
     setResultados([])
   }
 
-  // Búsqueda de productos con debounce
-  const buscarProducto = useCallback(async (q) => {
+  // Búsqueda de productos con debounce y prioridad configurada
+  const buscarProducto = useCallback(async (q, modo = modoBusqueda) => {
     if (!q.trim() || q.length < 2) { setResultados([]); return }
     setBuscando(true)
     try {
-      const res = await productosApi.buscar(q)
-      if (res.length === 1) {
+      const res = await productosApi.buscar(q, { modo })
+      if (res.length === 1 && modo !== 'SUSTANCIA') {
         procesarSeleccionProducto(res[0])
       } else {
         setResultados(res)
@@ -70,12 +79,12 @@ export default function VentasPage() {
     } finally {
       setBuscando(false)
     }
-  }, [store])
+  }, [store, modoBusqueda])
 
   const handleBusquedaChange = (val) => {
     setBusqueda(val)
     clearTimeout(window._busqTimer)
-    window._busqTimer = setTimeout(() => buscarProducto(val), 300)
+    window._busqTimer = setTimeout(() => buscarProducto(val, modoBusqueda), 250)
   }
 
   const buscarClientes = async (q) => {
@@ -115,7 +124,46 @@ export default function VentasPage() {
     <div className="h-full flex flex-col md:flex-row gap-0">
 
       {/* ── Panel izquierdo: búsqueda + carrito ───────────── */}
-      <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
+      <div className="flex-1 flex flex-col min-h-0 p-4 gap-3">
+
+        {/* Selector de modo de búsqueda (solo en Farmacia) */}
+        {rubro === 'FARMACIA' && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-dark-500 font-semibold uppercase tracking-wider">
+              Búsqueda:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setModoBusqueda('NOMBRE')
+                if (busqueda) buscarProducto(busqueda, 'NOMBRE')
+              }}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg font-medium transition-all ${
+                modoBusqueda === 'NOMBRE'
+                  ? 'bg-primary-600 text-white font-bold shadow-md'
+                  : 'bg-dark-700 text-dark-400 hover:text-white hover:bg-dark-600'
+              }`}
+            >
+              <Tag size={13} />
+              <span>Nombre Comercial</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModoBusqueda('SUSTANCIA')
+                if (busqueda) buscarProducto(busqueda, 'SUSTANCIA')
+              }}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg font-medium transition-all ${
+                modoBusqueda === 'SUSTANCIA'
+                  ? 'bg-blue-600 text-white font-bold shadow-md'
+                  : 'bg-dark-700 text-dark-400 hover:text-white hover:bg-dark-600'
+              }`}
+            >
+              <FlaskConical size={13} />
+              <span>Sustancia / Principio Activo</span>
+            </button>
+          </div>
+        )}
 
         {/* Barra de búsqueda */}
         <div className="relative">
@@ -124,7 +172,11 @@ export default function VentasPage() {
             className="input-field pl-10 pr-10"
             value={busqueda}
             onChange={e => handleBusquedaChange(e.target.value)}
-            placeholder="Escanear código de barras o escribir nombre..."
+            placeholder={
+              modoBusqueda === 'SUSTANCIA'
+                ? 'Escribe la sustancia o genérico (ej: Acetaminofen, Amoxicilina, Omeprazol)...'
+                : 'Escanear código de barras o escribir nombre comercial...'
+            }
             autoFocus
           />
           {busqueda && (
@@ -138,8 +190,8 @@ export default function VentasPage() {
         </div>
 
         {/* Resultados de búsqueda */}
-        {resultados.length > 1 && (
-          <div className="card p-0 overflow-hidden max-h-60 overflow-y-auto shadow-2xl border border-dark-600">
+        {resultados.length > 0 && (
+          <div className="card p-0 overflow-hidden max-h-64 overflow-y-auto shadow-2xl border border-dark-600">
             {resultados.map(p => (
               <button
                 key={p.id}
@@ -147,14 +199,22 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-between px-4 py-3
                            hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left transition-colors"
               >
-                <div>
-                  <p className="text-white font-medium text-sm">{p.nombre}</p>
-                  <p className="text-dark-500 text-xs">
-                    {p.codigo} {p.laboratorio && `· ${p.laboratorio}`}
-                  </p>
+                <div className="space-y-0.5">
+                  <p className="text-white font-semibold text-sm">{p.nombre}</p>
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="text-dark-500 font-mono text-[11px]">{p.codigo}</span>
+                    {p.principio_activo && (
+                      <span className="bg-blue-950/60 text-blue-300 border border-blue-800/60 px-1.5 py-0.2 rounded text-[10px]">
+                        🧪 {p.principio_activo}
+                      </span>
+                    )}
+                    {p.laboratorio && (
+                      <span className="text-dark-400 text-[11px]">· {p.laboratorio}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-primary-400 font-semibold">{formatCOP(p.precio_venta)}</p>
+                <div className="text-right flex-shrink-0 ml-3">
+                  <p className="text-primary-400 font-bold text-sm">{formatCOP(p.precio_venta)}</p>
                   <p className="text-dark-500 text-xs">
                     {p.maneja_fracciones ? `📦 Fraccionable (Stock: ${p.stock_actual})` : `Stock: ${p.stock_actual}`}
                   </p>

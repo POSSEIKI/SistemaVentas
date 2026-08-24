@@ -7,7 +7,7 @@ export const authApi = {
 }
 
 export const productosApi = {
-  buscar: (q) => api.get('/productos/buscar', { params: { q } }).then(r => r.data),
+  buscar: (q, params = {}) => api.get('/productos/buscar', { params: { q, ...params } }).then(r => r.data),
   porCodigo: (codigo) => api.get(`/productos/por-codigo/${encodeURIComponent(codigo)}`).then(r => r.data),
   listar: (params) => api.get('/productos', { params }).then(r => r.data),
   crear: (datos) => api.post('/productos', datos).then(r => r.data),

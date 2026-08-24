@@ -50,19 +50,68 @@ def _to_out(p: Producto) -> ProductoOut:
 async def buscar_productos(
     q: str = Query(..., min_length=1),
     categoria_id: Optional[int] = None,
+    modo: Optional[str] = Query("NOMBRE", enum=["NOMBRE", "SUSTANCIA", "CODIGO"]),
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    condiciones = [
-        Producto.activo == True,
-        or_(
-            Producto.nombre.ilike(f"%{q}%"),
-            Producto.codigo.ilike(f"%{q}%"),
-            Producto.codigo_barras.ilike(f"%{q}%"),
-            Producto.principio_activo.ilike(f"%{q}%"),
-            Producto.laboratorio.ilike(f"%{q}%"),
+    from sqlalchemy import case
+    q_clean = q.strip()
+
+    if modo == "SUSTANCIA":
+        # Búsqueda dedicada por principio activo / sustancia genérica
+        rank_expr = case(
+            (Producto.principio_activo == q_clean, 1),
+            (Producto.principio_activo.ilike(f"{q_clean}%"), 2),
+            (Producto.principio_activo.ilike(f"% {q_clean}%"), 3),
+            (Producto.principio_activo.ilike(f"%{q_clean}%"), 4),
+            else_=5
         )
-    ]
+        condiciones = [
+            Producto.activo == True,
+            Producto.principio_activo.isnot(None),
+            Producto.principio_activo.ilike(f"%{q_clean}%")
+        ]
+    elif modo == "CODIGO":
+        # Búsqueda dedicada por código o código de barras
+        rank_expr = case(
+            (Producto.codigo_barras == q_clean, 1),
+            (Producto.codigo == q_clean, 2),
+            (Producto.codigo_barras.ilike(f"{q_clean}%"), 3),
+            (Producto.codigo.ilike(f"{q_clean}%"), 4),
+            else_=5
+        )
+        condiciones = [
+            Producto.activo == True,
+            or_(
+                Producto.codigo_barras.ilike(f"%{q_clean}%"),
+                Producto.codigo.ilike(f"%{q_clean}%"),
+            )
+        ]
+    else:
+        # Modo NOMBRE (Predeterminado): Prioridad absoluta al Nombre Comercial y Código
+        rank_expr = case(
+            (Producto.codigo_barras == q_clean, 1),
+            (Producto.codigo == q_clean, 2),
+            (Producto.nombre.ilike(f"{q_clean}%"), 3),
+            (Producto.nombre.ilike(f"% {q_clean}%"), 4),
+            (Producto.nombre.ilike(f"%{q_clean}%"), 5),
+            (Producto.codigo.ilike(f"{q_clean}%"), 6),
+            (Producto.principio_activo.ilike(f"{q_clean}%"), 7),
+            (Producto.principio_activo.ilike(f"%{q_clean}%"), 8),
+            (Producto.laboratorio.ilike(f"%{q_clean}%"), 9),
+            else_=10
+        )
+        condiciones = [
+            Producto.activo == True,
+            or_(
+                Producto.nombre.ilike(f"%{q_clean}%"),
+                Producto.codigo.ilike(f"%{q_clean}%"),
+                Producto.codigo_barras.ilike(f"%{q_clean}%"),
+                Producto.principio_activo.ilike(f"%{q_clean}%"),
+                Producto.laboratorio.ilike(f"%{q_clean}%"),
+            )
+        ]
+
     if categoria_id:
         condiciones.append(Producto.categoria_id == categoria_id)
 
@@ -70,7 +119,8 @@ async def buscar_productos(
         select(Producto)
         .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
         .where(*condiciones)
-        .limit(60)
+        .order_by(rank_expr, Producto.nombre)
+        .limit(50)
     )
     result = await db.execute(stmt)
     productos = result.scalars().unique().all()

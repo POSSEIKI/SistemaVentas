@@ -162,14 +162,44 @@ export default function SetupPage({ onSetupComplete }) {
           {/* Paso 2: Datos de la empresa */}
           {paso === 1 && (
             <>
-              <h2 className="text-lg font-semibold text-white">Datos de la empresa</h2>
+              <h2 className="text-lg font-semibold text-white">Datos del negocio</h2>
+
+              {/* Rubro del Negocio */}
+              <div>
+                <label className="block text-xs font-semibold text-primary-400 uppercase tracking-wider mb-2">
+                  ¿A qué rubro pertenece tu negocio? *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'FARMACIA',      label: 'Droguería / Farmacia',    icon: '💊' },
+                    { id: 'FERRETERIA',   label: 'Ferretería / Materiales', icon: '🔨' },
+                    { id: 'SUPERMERCADO', label: 'Supermercado / Víveres',  icon: '🛒' },
+                    { id: 'GENERAL',      label: 'Comercio General',        icon: '🏬' },
+                  ].map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => set('rubro', r.id)}
+                      className={`p-2.5 rounded-xl text-left border text-xs font-semibold flex items-center gap-2 transition-all ${
+                        (form.rubro || 'FARMACIA') === r.id
+                          ? 'bg-primary-950/50 border-primary-500 text-primary-300 ring-2 ring-primary-500/20'
+                          : 'bg-dark-700/50 border-dark-700 text-dark-300 hover:text-white'
+                      }`}
+                    >
+                      <span className="text-base">{r.icon}</span>
+                      <span>{r.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm text-dark-500 mb-1">Nombre de la empresa *</label>
                 <input
                   className="input-field"
                   value={form.empresa_nombre}
                   onChange={e => set('empresa_nombre', e.target.value)}
-                  placeholder="Aromas del Valle"
+                  placeholder="Ej: Droguería San Juan o Ferretería Central"
                 />
               </div>
               <div>
@@ -181,24 +211,26 @@ export default function SetupPage({ onSetupComplete }) {
                   placeholder="900.123.456-7"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-dark-500 mb-1">Teléfono</label>
-                <input
-                  className="input-field"
-                  value={form.empresa_telefono}
-                  onChange={e => set('empresa_telefono', e.target.value)}
-                  placeholder="3101234567"
-                  inputMode="tel"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-dark-500 mb-1">Ciudad</label>
-                <input
-                  className="input-field"
-                  value={form.empresa_ciudad}
-                  onChange={e => set('empresa_ciudad', e.target.value)}
-                  placeholder="Bogotá"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm text-dark-500 mb-1">Teléfono</label>
+                  <input
+                    className="input-field"
+                    value={form.empresa_telefono}
+                    onChange={e => set('empresa_telefono', e.target.value)}
+                    placeholder="3101234567"
+                    inputMode="tel"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-dark-500 mb-1">Ciudad</label>
+                  <input
+                    className="input-field"
+                    value={form.empresa_ciudad}
+                    onChange={e => set('empresa_ciudad', e.target.value)}
+                    placeholder="Bogotá"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-dark-500 mb-1">Dirección</label>

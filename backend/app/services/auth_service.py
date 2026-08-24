@@ -54,6 +54,7 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
     config.telefono = request.empresa_telefono or ""
     config.ciudad = request.empresa_ciudad or ""
     config.direccion = request.empresa_direccion or ""
+    config.rubro = request.rubro or "FARMACIA"
     config.primer_inicio = False
 
     await db.commit()
@@ -91,6 +92,11 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
     rol = result.scalar_one_or_none()
     permisos = json.loads(rol.permisos) if rol else {}
 
+    # Obtener rubro de empresa
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    cfg = res_cfg.scalar_one_or_none()
+    rubro = cfg.rubro if cfg else "FARMACIA"
+
     access_token = create_access_token({"sub": usuario.username})
     refresh_token = create_refresh_token(usuario.id)
 
@@ -102,4 +108,5 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
         username=usuario.username,
         rol=rol.nombre if rol else "",
         permisos=permisos,
+        rubro=rubro,
     )

@@ -19,6 +19,7 @@ class TokenResponse(BaseModel):
     username: str
     rol: str
     permisos: dict
+    rubro: Optional[str] = "FARMACIA"
 
 class SetupRequest(BaseModel):
     admin_nombre: str
@@ -29,6 +30,7 @@ class SetupRequest(BaseModel):
     empresa_telefono: Optional[str] = ""
     empresa_ciudad: Optional[str] = ""
     empresa_direccion: Optional[str] = ""
+    rubro: Optional[str] = "FARMACIA"
 
     @field_validator("admin_codigo")
     @classmethod
