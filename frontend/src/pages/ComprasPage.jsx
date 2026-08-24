@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { inventarioApi, productosApi } from '../api/services'
-import { Search, Plus, Trash2, Package } from 'lucide-react'
+import { Search, Plus, Trash2, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 function formatCOP(n) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
+
+const LIMITE_BUSQUEDA = 6
 
 export default function ComprasPage() {
   const [proveedores, setProveedores] = useState([])
@@ -13,6 +15,7 @@ export default function ComprasPage() {
   const [numFactura, setNumFactura] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
+  const [pagBusqueda, setPagBusqueda] = useState(1)
   const [lineas, setLineas] = useState([])
   const [guardando, setGuardando] = useState(false)
 
@@ -21,10 +24,11 @@ export default function ComprasPage() {
   }, [])
 
   const buscarProducto = async (q) => {
-    if (!q.trim() || q.length < 2) { setResultados([]); return }
+    if (!q.trim() || q.length < 2) { setResultados([]); setPagBusqueda(1); return }
     try {
       const res = await productosApi.buscar(q)
       setResultados(res)
+      setPagBusqueda(1)
     } catch {}
   }
 
@@ -106,14 +110,59 @@ export default function ComprasPage() {
           placeholder="Buscar producto para agregar..."
         />
         {resultados.length > 0 && (
-          <div className="absolute top-full left-0 right-0 z-10 bg-dark-800 border border-dark-700 rounded-xl mt-1 overflow-hidden shadow-xl">
-            {resultados.map(p => (
-              <button key={p.id} onClick={() => agregarLinea(p)}
-                className="w-full flex justify-between items-center px-4 py-3 hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left">
-                <span className="text-white text-sm">{p.nombre}</span>
-                <span className="text-dark-500 text-xs">Costo: {formatCOP(p.precio_costo)}</span>
-              </button>
-            ))}
+          <div className="absolute top-full left-0 right-0 z-10 bg-dark-800 border border-dark-700 rounded-xl mt-1 overflow-hidden shadow-2xl">
+            <div className="bg-dark-900/80 px-3 py-1.5 border-b border-dark-700 flex justify-between items-center text-xs">
+              <span className="text-dark-400 font-medium">🎯 {resultados.length} productos encontrados</span>
+              {resultados.length > LIMITE_BUSQUEDA && (
+                <span className="text-dark-500 font-mono text-[11px]">
+                  Pág. {pagBusqueda} de {Math.ceil(resultados.length / LIMITE_BUSQUEDA)}
+                </span>
+              )}
+            </div>
+
+            <div className="divide-y divide-dark-700/60 max-h-60 overflow-y-auto">
+              {resultados
+                .slice((pagBusqueda - 1) * LIMITE_BUSQUEDA, pagBusqueda * LIMITE_BUSQUEDA)
+                .map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => agregarLinea(p)}
+                    className="w-full flex justify-between items-center px-4 py-2.5 hover:bg-dark-700 text-left transition-colors"
+                  >
+                    <div>
+                      <span className="text-white text-sm font-semibold block">{p.nombre}</span>
+                      <span className="text-dark-400 font-mono text-[11px]">{p.codigo}</span>
+                    </div>
+                    <span className="text-primary-400 font-bold font-mono text-xs">
+                      Costo: {formatCOP(p.precio_costo)}
+                    </span>
+                  </button>
+                ))}
+            </div>
+
+            {resultados.length > LIMITE_BUSQUEDA && (
+              <div className="bg-dark-900/90 px-3 py-1.5 border-t border-dark-700 flex justify-between items-center text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPagBusqueda(p => Math.max(1, p - 1))}
+                  disabled={pagBusqueda === 1}
+                  className="px-2 py-0.5 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1"
+                >
+                  <ChevronLeft size={13} /> Anterior
+                </button>
+                <span className="text-dark-400 text-[11px]">
+                  {((pagBusqueda - 1) * LIMITE_BUSQUEDA) + 1} - {Math.min(pagBusqueda * LIMITE_BUSQUEDA, resultados.length)} de {resultados.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPagBusqueda(p => Math.min(Math.ceil(resultados.length / LIMITE_BUSQUEDA), p + 1))}
+                  disabled={pagBusqueda >= Math.ceil(resultados.length / LIMITE_BUSQUEDA)}
+                  className="px-2 py-0.5 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1"
+                >
+                  Siguiente <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

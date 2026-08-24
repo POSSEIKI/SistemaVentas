@@ -3,7 +3,8 @@ import { useVentaStore } from '../stores/ventaStore'
 import { productosApi, clientesApi, facturasApi, configApi } from '../api/services'
 import {
   Search, X, Plus, Minus, Trash2, ShoppingCart,
-  User, CreditCard, Truck, Banknote, DollarSign, Package, Layers, Pill, FlaskConical, Tag
+  User, CreditCard, Truck, Banknote, DollarSign, Package, Layers, Pill, FlaskConical, Tag,
+  ChevronLeft, ChevronRight
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -18,10 +19,13 @@ function formatCOP(num) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(num || 0)
 }
 
+const LIMITE_BUSQUEDA = 6
+
 export default function VentasPage() {
   const store = useVentaStore()
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState([])
+  const [pagBusqueda, setPagBusqueda] = useState(1)
   const [buscando, setBuscando] = useState(false)
   const [cobrando, setCobrando] = useState(false)
   const [rubro, setRubro] = useState('FARMACIA')
@@ -51,6 +55,7 @@ export default function VentasPage() {
       store.agregarProducto(p)
       setBusqueda('')
       setResultados([])
+      setPagBusqueda(1)
     }
   }
 
@@ -61,11 +66,12 @@ export default function VentasPage() {
     setProductoFraccion(null)
     setBusqueda('')
     setResultados([])
+    setPagBusqueda(1)
   }
 
   // Búsqueda de productos con debounce y prioridad configurada
   const buscarProducto = useCallback(async (q, modo = modoBusqueda) => {
-    if (!q.trim() || q.length < 2) { setResultados([]); return }
+    if (!q.trim() || q.length < 2) { setResultados([]); setPagBusqueda(1); return }
     setBuscando(true)
     try {
       const res = await productosApi.buscar(q, { modo })
@@ -73,6 +79,7 @@ export default function VentasPage() {
         procesarSeleccionProducto(res[0])
       } else {
         setResultados(res)
+        setPagBusqueda(1)
       }
     } catch {
       toast.error('Error buscando productos')
@@ -229,38 +236,92 @@ export default function VentasPage() {
           )}
         </div>
 
-        {/* Resultados de búsqueda */}
+        {/* Resultados de búsqueda con paginación */}
         {resultados.length > 0 && (
-          <div className="card p-0 overflow-hidden max-h-64 overflow-y-auto shadow-2xl border border-dark-600">
-            {resultados.map(p => (
-              <button
-                key={p.id}
-                onClick={() => procesarSeleccionProducto(p)}
-                className="w-full flex items-center justify-between px-4 py-3
-                           hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left transition-colors"
-              >
-                <div className="space-y-0.5">
-                  <p className="text-white font-semibold text-sm">{p.nombre}</p>
-                  <div className="flex items-center gap-2 flex-wrap text-xs">
-                    <span className="text-dark-500 font-mono text-[11px]">{p.codigo}</span>
-                    {p.principio_activo && (
-                      <span className="bg-blue-950/60 text-blue-300 border border-blue-800/60 px-1.5 py-0.2 rounded text-[10px]">
-                        🧪 {p.principio_activo}
-                      </span>
-                    )}
-                    {p.laboratorio && (
-                      <span className="text-dark-400 text-[11px]">· {p.laboratorio}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right flex-shrink-0 ml-3">
-                  <p className="text-primary-400 font-bold text-sm">{formatCOP(p.precio_venta)}</p>
-                  <p className="text-dark-500 text-xs">
-                    {p.maneja_fracciones ? `📦 Fraccionable (Stock: ${p.stock_actual})` : `Stock: ${p.stock_actual}`}
-                  </p>
-                </div>
-              </button>
-            ))}
+          <div className="card p-0 overflow-hidden shadow-2xl border border-dark-600 bg-dark-800 animate-in fade-in duration-150">
+            {/* Cabecera del desplegable */}
+            <div className="bg-dark-900/90 px-3.5 py-2 border-b border-dark-700 flex justify-between items-center text-xs">
+              <span className="text-dark-300 font-medium flex items-center gap-1.5">
+                <span>🎯 Encontrados:</span>
+                <strong className="text-primary-400 font-bold font-mono">{resultados.length}</strong>
+                <span>artículos</span>
+              </span>
+              {resultados.length > LIMITE_BUSQUEDA && (
+                <span className="text-dark-400 font-mono text-[11px] bg-dark-800 px-2 py-0.5 rounded border border-dark-700">
+                  Página <strong className="text-white">{pagBusqueda}</strong> de <strong className="text-white">{Math.ceil(resultados.length / LIMITE_BUSQUEDA)}</strong>
+                </span>
+              )}
+            </div>
+
+            {/* Lista paginada */}
+            <div className="divide-y divide-dark-700/60 max-h-72 overflow-y-auto">
+              {resultados
+                .slice((pagBusqueda - 1) * LIMITE_BUSQUEDA, pagBusqueda * LIMITE_BUSQUEDA)
+                .map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => procesarSeleccionProducto(p)}
+                    className="w-full flex items-center justify-between px-4 py-2.5
+                               hover:bg-dark-700/80 text-left transition-colors group"
+                  >
+                    <div className="space-y-0.5 min-w-0 pr-3">
+                      <p className="text-white font-semibold text-sm group-hover:text-primary-300 transition-colors truncate">
+                        {p.nombre}
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-dark-400 font-mono text-[11px] bg-dark-900/60 px-1.5 py-0.5 rounded border border-dark-700">
+                          {p.codigo}
+                        </span>
+                        {p.principio_activo && (
+                          <span className="bg-blue-950/70 text-blue-300 border border-blue-800/60 px-1.5 py-0.2 rounded text-[10px] truncate max-w-xs">
+                            🧪 {p.principio_activo}
+                          </span>
+                        )}
+                        {p.laboratorio && (
+                          <span className="text-dark-400 text-[11px] truncate">· {p.laboratorio}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-primary-400 font-bold text-sm font-mono">{formatCOP(p.precio_venta)}</p>
+                      <p className="text-dark-400 text-xs">
+                        {p.maneja_fracciones ? (
+                          <span className="text-primary-300 font-medium">📦 Fraccionable</span>
+                        ) : (
+                          <span>Stock: <strong className="text-white font-mono">{p.stock_actual}</strong></span>
+                        )}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+            </div>
+
+            {/* Paginador mini para el dropdown de ventas */}
+            {resultados.length > LIMITE_BUSQUEDA && (
+              <div className="bg-dark-900/90 px-3 py-2 border-t border-dark-700 flex justify-between items-center text-xs">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPagBusqueda(p => Math.max(1, p - 1)) }}
+                  disabled={pagBusqueda === 1}
+                  className="px-2.5 py-1 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1 font-medium hover:border-dark-600 transition-colors"
+                >
+                  <ChevronLeft size={13} /> Anterior
+                </button>
+
+                <span className="text-dark-400 text-[11px]">
+                  Mostrando <strong className="text-white font-mono">{((pagBusqueda - 1) * LIMITE_BUSQUEDA) + 1} - {Math.min(pagBusqueda * LIMITE_BUSQUEDA, resultados.length)}</strong> de <strong className="text-white font-mono">{resultados.length}</strong>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setPagBusqueda(p => Math.min(Math.ceil(resultados.length / LIMITE_BUSQUEDA), p + 1)) }}
+                  disabled={pagBusqueda >= Math.ceil(resultados.length / LIMITE_BUSQUEDA)}
+                  className="px-2.5 py-1 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none text-xs flex items-center gap-1 font-medium hover:border-dark-600 transition-colors"
+                >
+                  Siguiente <ChevronRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         )}
 

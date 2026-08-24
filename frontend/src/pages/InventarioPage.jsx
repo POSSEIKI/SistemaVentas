@@ -50,7 +50,7 @@ export default function InventarioPage() {
 
   // Paginación
   const [pagina, setPagina] = useState(1)
-  const [limite, setLimite] = useState(50)
+  const [limite, setLimite] = useState(25)
   const [totalProductos, setTotalProductos] = useState(0)
   const [totalPaginas, setTotalPaginas] = useState(1)
 
@@ -117,7 +117,7 @@ export default function InventarioPage() {
   }
 
   useEffect(() => {
-    cargarDatos('', '', 1, limite)
+    cargarDatos('', '', 1, 25)
   }, [])
 
   const handleBusquedaChange = (val) => {
@@ -146,6 +146,32 @@ export default function InventarioPage() {
     setLimite(lim)
     setPagina(1)
     cargarDatos(busqueda, catFiltro, 1, lim)
+  }
+
+  // Generador de páginas numeradas
+  const getNumerosPaginacion = () => {
+    if (totalPaginas <= 7) {
+      return Array.from({ length: totalPaginas }, (_, i) => i + 1)
+    }
+    const pages = []
+    if (pagina <= 4) {
+      for (let i = 1; i <= 5; i++) pages.push(i)
+      pages.push('...')
+      pages.push(totalPaginas)
+    } else if (pagina >= totalPaginas - 3) {
+      pages.push(1)
+      pages.push('...')
+      for (let i = totalPaginas - 4; i <= totalPaginas; i++) pages.push(i)
+    } else {
+      pages.push(1)
+      pages.push('...')
+      pages.push(pagina - 1)
+      pages.push(pagina)
+      pages.push(pagina + 1)
+      pages.push('...')
+      pages.push(totalPaginas)
+    }
+    return pages
   }
 
   const handleDescargarTomaFisica = () => {
@@ -452,12 +478,58 @@ export default function InventarioPage() {
         </select>
       </div>
 
+      {/* ── Sub-header: Estado de Búsqueda y Paginación Rápida Superior ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 text-xs text-dark-400">
+        <div className="flex items-center gap-2">
+          {busqueda ? (
+            <span className="text-white font-medium flex items-center gap-1.5">
+              <span>🔍 Encontrados:</span>
+              <strong className="text-primary-400 font-mono text-sm">{totalProductos.toLocaleString()}</strong>
+              <span>artículos para</span>
+              <strong className="text-amber-300 font-semibold bg-dark-800 px-2 py-0.5 rounded border border-dark-700">
+                "{busqueda}"
+              </strong>
+            </span>
+          ) : (
+            <span>
+              Mostrando <strong className="text-white font-mono">{totalProductos > 0 ? ((pagina - 1) * limite) + 1 : 0} - {Math.min(pagina * limite, totalProductos)}</strong> de <strong className="text-white font-mono">{totalProductos.toLocaleString()}</strong> productos
+            </span>
+          )}
+        </div>
+
+        {totalProductos > 0 && (
+          <div className="flex items-center gap-3">
+            <span className="text-dark-500">
+              Página <strong className="text-white font-mono">{pagina}</strong> de <strong className="text-white font-mono">{totalPaginas}</strong>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => cambiarPagina(pagina - 1)}
+                disabled={pagina === 1}
+                className="p-1 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none hover:border-dark-600"
+                title="Página anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => cambiarPagina(pagina + 1)}
+                disabled={pagina >= totalPaginas}
+                className="p-1 rounded bg-dark-800 border border-dark-700 text-dark-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none hover:border-dark-600"
+                title="Página siguiente"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Tabla de Productos ─────────────────────────────────────── */}
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden shadow-lg border border-dark-700">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="border-b border-dark-700 bg-dark-800/80">
-              <tr className="text-dark-500 text-left text-xs font-semibold uppercase tracking-wider">
+            <thead className="border-b border-dark-700 bg-dark-800/90">
+              <tr className="text-dark-400 text-left text-xs font-semibold uppercase tracking-wider">
                 <th className="px-4 py-3">Código</th>
                 <th className="px-4 py-3">Producto / Presentación</th>
                 <th className="px-4 py-3">Categoría / Marca</th>
@@ -467,20 +539,27 @@ export default function InventarioPage() {
                 <th className="px-4 py-3 text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-dark-700">
+            <tbody className="divide-y divide-dark-700/70">
               {cargando ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-dark-500">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                      <span>Cargando productos...</span>
+                  <td colSpan={7} className="text-center py-12 text-dark-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-xs">Cargando página {pagina}...</span>
                     </div>
                   </td>
                 </tr>
               ) : filtrados.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-dark-500">
-                    No se encontraron productos. Crea uno nuevo o importa un archivo Excel.
+                  <td colSpan={7} className="text-center py-12 text-dark-500">
+                    {busqueda ? (
+                      <div className="space-y-1">
+                        <p className="text-white text-sm font-semibold">No se encontraron productos para "{busqueda}"</p>
+                        <p className="text-xs text-dark-500">Intenta buscar por otro término o limpia el buscador</p>
+                      </div>
+                    ) : (
+                      <p>No hay productos registrados en esta categoría.</p>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -489,14 +568,14 @@ export default function InventarioPage() {
                   return (
                     <tr key={p.id} className="hover:bg-dark-700/40 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs text-dark-400">
-                        <div>{p.codigo}</div>
+                        <div className="font-semibold text-dark-300">{p.codigo}</div>
                         {p.codigo_barras && (
                           <div className="text-[10px] text-dark-500">{p.codigo_barras}</div>
                         )}
                       </td>
 
                       <td className="px-4 py-3">
-                        <div className="text-white font-medium">{p.nombre}</div>
+                        <div className="text-white font-medium text-sm">{p.nombre}</div>
                         {p.maneja_fracciones ? (
                           <div className="text-xs text-primary-400 font-mono mt-0.5">
                             📦 Caja x{p.contenido_caja} ({formatCOP(p.precio_caja)})
@@ -509,13 +588,13 @@ export default function InventarioPage() {
                       </td>
 
                       <td className="px-4 py-3 text-dark-400 text-xs">
-                        <div>{p.categoria_nombre || 'General'}</div>
+                        <div className="text-dark-300">{p.categoria_nombre || 'General'}</div>
                         {p.laboratorio && (
                           <div className="text-dark-500 text-[11px]">{p.laboratorio}</div>
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right font-semibold text-primary-400">
+                      <td className="px-4 py-3 text-right font-bold text-primary-400">
                         {formatCOP(p.precio_venta)}
                       </td>
 
@@ -535,20 +614,20 @@ export default function InventarioPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => abrirEditar(p)}
-                            className="p-1.5 text-dark-500 hover:text-white hover:bg-dark-600 rounded-lg"
-                            title="Editar"
+                            className="p-1.5 text-dark-400 hover:text-white hover:bg-dark-600 rounded-lg transition-colors"
+                            title="Editar producto"
                           >
-                            <Edit2 size={16} />
+                            <Edit2 size={15} />
                           </button>
                           <button
                             onClick={() => handleEliminarProducto(p)}
-                            className="p-1.5 text-dark-500 hover:text-red-400 hover:bg-dark-600 rounded-lg"
-                            title="Eliminar"
+                            className="p-1.5 text-dark-400 hover:text-red-400 hover:bg-dark-600 rounded-lg transition-colors"
+                            title="Eliminar producto"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={15} />
                           </button>
                         </div>
                       </td>
@@ -560,72 +639,98 @@ export default function InventarioPage() {
           </table>
         </div>
 
-        {/* ── BARRA DE PAGINACIÓN ───────────────────────────────────── */}
+        {/* ── BARRA DE PAGINACIÓN COMPLETA CON BOTONES NUMÉRICOS ────── */}
         {totalProductos > 0 && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-dark-800/90 border-t border-dark-700 text-xs text-dark-400">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-3 px-4 py-3 bg-dark-800/90 border-t border-dark-700 text-xs text-dark-400">
             <div>
               Mostrando{' '}
               <strong className="text-white font-mono">
                 {((pagina - 1) * limite) + 1} - {Math.min(pagina * limite, totalProductos)}
               </strong>{' '}
-              de <strong className="text-white font-mono">{totalProductos.toLocaleString()}</strong> productos
+              de <strong className="text-white font-mono">{totalProductos.toLocaleString()}</strong> artículos
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 flex-wrap justify-center">
               {/* Selector de límite por página */}
               <div className="flex items-center gap-1.5">
-                <span>Por pág:</span>
+                <span className="text-dark-500">Filas:</span>
                 <select
                   value={limite}
                   onChange={e => cambiarLimite(e.target.value)}
                   className="bg-dark-700 border border-dark-600 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
                 >
+                  <option value={25}>25</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
                   <option value={250}>250</option>
-                  <option value={500}>500</option>
                 </select>
               </div>
 
-              {/* Botones de navegación de página */}
+              {/* Botones de navegación numerados */}
               <div className="flex items-center gap-1">
+                {/* Primera página */}
                 <button
                   onClick={() => cambiarPagina(1)}
                   disabled={pagina === 1}
-                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-colors"
                   title="Primera página"
                 >
-                  <ChevronsLeft size={16} />
+                  <ChevronsLeft size={15} />
                 </button>
+                {/* Anterior */}
                 <button
                   onClick={() => cambiarPagina(pagina - 1)}
                   disabled={pagina === 1}
-                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-colors"
                   title="Página anterior"
                 >
-                  <ChevronLeft size={16} />
+                  <ChevronLeft size={15} />
                 </button>
 
-                <span className="px-2 font-medium">
-                  Página <strong className="text-white font-mono">{pagina}</strong> de{' '}
-                  <strong className="text-white font-mono">{totalPaginas}</strong>
-                </span>
+                {/* Botones numéricos de página */}
+                <div className="flex items-center gap-1 px-1">
+                  {getNumerosPaginacion().map((pNum, idx) => {
+                    if (pNum === '...') {
+                      return (
+                        <span key={`dots-${idx}`} className="px-1.5 text-dark-600 font-mono">
+                          …
+                        </span>
+                      )
+                    }
+                    const esActual = pNum === pagina
+                    return (
+                      <button
+                        key={`pag-${pNum}`}
+                        onClick={() => cambiarPagina(pNum)}
+                        className={`min-w-[28px] h-7 px-1.5 rounded-lg font-mono text-xs font-semibold transition-all ${
+                          esActual
+                            ? 'bg-primary-600 text-white shadow-md shadow-primary-900/30'
+                            : 'text-dark-400 hover:text-white hover:bg-dark-700'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    )
+                  })}
+                </div>
 
+                {/* Siguiente */}
                 <button
                   onClick={() => cambiarPagina(pagina + 1)}
                   disabled={pagina >= totalPaginas}
-                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-colors"
                   title="Página siguiente"
                 >
-                  <ChevronRight size={16} />
+                  <ChevronRight size={15} />
                 </button>
+                {/* Última página */}
                 <button
                   onClick={() => cambiarPagina(totalPaginas)}
                   disabled={pagina >= totalPaginas}
-                  className="p-1 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                  className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white disabled:opacity-25 disabled:pointer-events-none transition-colors"
                   title="Última página"
                 >
-                  <ChevronsRight size={16} />
+                  <ChevronsRight size={15} />
                 </button>
               </div>
             </div>
