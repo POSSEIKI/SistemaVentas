@@ -3,7 +3,7 @@ import { useVentaStore } from '../stores/ventaStore'
 import { productosApi, clientesApi, facturasApi } from '../api/services'
 import {
   Search, X, Plus, Minus, Trash2, ShoppingCart,
-  User, CreditCard, Truck, Banknote, DollarSign, AlertCircle
+  User, CreditCard, Truck, Banknote, DollarSign, Package, Layers, Pill
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -15,7 +15,7 @@ const FORMAS_PAGO = [
 ]
 
 function formatCOP(num) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(num)
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(num || 0)
 }
 
 export default function VentasPage() {
@@ -24,37 +24,58 @@ export default function VentasPage() {
   const [resultados, setResultados] = useState([])
   const [buscando, setBuscando] = useState(false)
   const [cobrando, setCobrando] = useState(false)
+
+  // Selector de fracción / presentación
+  const [modalFraccion, setModalFraccion] = useState(false)
+  const [productoFraccion, setProductoFraccion] = useState(null)
+
+  // Cliente modal
   const [modalCliente, setModalCliente] = useState(false)
   const [busqCliente, setBusqCliente] = useState('')
   const [clientes, setClientes] = useState([])
 
-  // Búsqueda de productos con debounce simple
+  const procesarSeleccionProducto = (p) => {
+    if (p.maneja_fracciones) {
+      setProductoFraccion(p)
+      setModalFraccion(true)
+    } else {
+      store.agregarProducto(p)
+      setBusqueda('')
+      setResultados([])
+    }
+  }
+
+  const elegirPresentacion = (presentacion) => {
+    if (!productoFraccion) return
+    store.agregarProducto(productoFraccion, presentacion)
+    setModalFraccion(false)
+    setProductoFraccion(null)
+    setBusqueda('')
+    setResultados([])
+  }
+
+  // Búsqueda de productos con debounce
   const buscarProducto = useCallback(async (q) => {
     if (!q.trim() || q.length < 2) { setResultados([]); return }
     setBuscando(true)
     try {
       const res = await productosApi.buscar(q)
       if (res.length === 1) {
-        store.agregarProducto(res[0])
-        setBusqueda('')
-        setResultados([])
+        procesarSeleccionProducto(res[0])
       } else {
         setResultados(res)
       }
-    } catch { toast.error('Error buscando productos') }
-    finally { setBuscando(false) }
+    } catch {
+      toast.error('Error buscando productos')
+    } finally {
+      setBuscando(false)
+    }
   }, [store])
 
   const handleBusquedaChange = (val) => {
     setBusqueda(val)
     clearTimeout(window._busqTimer)
     window._busqTimer = setTimeout(() => buscarProducto(val), 300)
-  }
-
-  const seleccionarProducto = (p) => {
-    store.agregarProducto(p)
-    setBusqueda('')
-    setResultados([])
   }
 
   const buscarClientes = async (q) => {
@@ -76,7 +97,7 @@ export default function VentasPage() {
     try {
       const res = await facturasApi.crear(store.buildPayload())
       toast.success(`✅ Factura ${res.numero} — Total: ${formatCOP(res.total)}`)
-      if (res.cambio > 0) toast.success(`Cambio: ${formatCOP(res.cambio)}`, { duration: 5000 })
+      if (res.cambio > 0) toast.success(`Cambio: ${formatCOP(res.cambio)}`, { duration: 6000 })
       store.limpiar()
     } catch (err) {
       toast.error(err.message || 'Error al procesar la venta')
@@ -93,7 +114,7 @@ export default function VentasPage() {
   return (
     <div className="h-full flex flex-col md:flex-row gap-0">
 
-      {/* ── Panel izquierdo: búsqueda + tabla ──────────────── */}
+      {/* ── Panel izquierdo: búsqueda + carrito ───────────── */}
       <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
 
         {/* Barra de búsqueda */}
@@ -103,12 +124,14 @@ export default function VentasPage() {
             className="input-field pl-10 pr-10"
             value={busqueda}
             onChange={e => handleBusquedaChange(e.target.value)}
-            placeholder="Buscar producto por nombre o código..."
+            placeholder="Escanear código de barras o escribir nombre..."
             autoFocus
           />
           {busqueda && (
-            <button className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500"
-              onClick={() => { setBusqueda(''); setResultados([]) }}>
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
+              onClick={() => { setBusqueda(''); setResultados([]) }}
+            >
               <X size={16} />
             </button>
           )}
@@ -116,63 +139,76 @@ export default function VentasPage() {
 
         {/* Resultados de búsqueda */}
         {resultados.length > 1 && (
-          <div className="card p-0 overflow-hidden">
+          <div className="card p-0 overflow-hidden max-h-60 overflow-y-auto shadow-2xl border border-dark-600">
             {resultados.map(p => (
               <button
                 key={p.id}
-                onClick={() => seleccionarProducto(p)}
+                onClick={() => procesarSeleccionProducto(p)}
                 className="w-full flex items-center justify-between px-4 py-3
-                           hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left"
+                           hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left transition-colors"
               >
                 <div>
                   <p className="text-white font-medium text-sm">{p.nombre}</p>
-                  <p className="text-dark-500 text-xs">{p.codigo}</p>
+                  <p className="text-dark-500 text-xs">
+                    {p.codigo} {p.laboratorio && `· ${p.laboratorio}`}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-primary-400 font-semibold">{formatCOP(p.precio_venta)}</p>
-                  <p className="text-dark-500 text-xs">Stock: {p.stock_actual}</p>
+                  <p className="text-dark-500 text-xs">
+                    {p.maneja_fracciones ? `📦 Fraccionable (Stock: ${p.stock_actual})` : `Stock: ${p.stock_actual}`}
+                  </p>
                 </div>
               </button>
             ))}
           </div>
         )}
 
-        {/* Tabla de lineas */}
+        {/* Tabla de líneas en carrito */}
         <div className="flex-1 overflow-auto">
           {store.lineas.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-dark-600">
-              <ShoppingCart size={40} className="mb-2" />
-              <p className="text-sm">Busca productos para agregar</p>
+            <div className="flex flex-col items-center justify-center h-48 text-dark-600">
+              <ShoppingCart size={48} className="mb-2 opacity-50" />
+              <p className="text-sm font-medium">El carrito de venta está vacío</p>
+              <p className="text-xs text-dark-500 mt-1">Busca productos arriba o escanea código de barras</p>
             </div>
           ) : (
             <div className="space-y-2">
               {store.lineas.map(linea => (
-                <div key={linea.producto_id} className="card flex items-center gap-3">
+                <div
+                  key={linea.key}
+                  className="card flex items-center gap-3 hover:border-dark-600 transition-colors"
+                >
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">{linea.nombre}</p>
-                    <p className="text-dark-500 text-xs">{formatCOP(linea.precio_unitario)} c/u</p>
+                    <p className="text-white font-semibold text-sm truncate">{linea.nombre}</p>
+                    <p className="text-dark-500 text-xs">
+                      {formatCOP(linea.precio_unitario)} c/u
+                    </p>
                   </div>
+
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => store.actualizarCantidad(linea.producto_id, linea.cantidad - 1)}
-                      className="w-8 h-8 bg-dark-700 rounded-lg flex items-center justify-center text-white hover:bg-dark-600"
+                      onClick={() => store.actualizarCantidad(linea.key, linea.cantidad - 1)}
+                      className="w-8 h-8 bg-dark-700 rounded-lg flex items-center justify-center text-white hover:bg-dark-600 active:scale-95"
                     >
                       <Minus size={14} />
                     </button>
                     <span className="text-white font-bold w-8 text-center">{linea.cantidad}</span>
                     <button
-                      onClick={() => store.actualizarCantidad(linea.producto_id, linea.cantidad + 1)}
-                      className="w-8 h-8 bg-dark-700 rounded-lg flex items-center justify-center text-white hover:bg-dark-600"
+                      onClick={() => store.actualizarCantidad(linea.key, linea.cantidad + 1)}
+                      className="w-8 h-8 bg-dark-700 rounded-lg flex items-center justify-center text-white hover:bg-dark-600 active:scale-95"
                     >
                       <Plus size={14} />
                     </button>
                   </div>
-                  <p className="text-primary-400 font-semibold w-24 text-right text-sm">
+
+                  <p className="text-primary-400 font-bold w-24 text-right text-sm">
                     {formatCOP(linea.precio_unitario * linea.cantidad)}
                   </p>
+
                   <button
-                    onClick={() => store.quitarLinea(linea.producto_id)}
-                    className="text-dark-600 hover:text-red-400 ml-1"
+                    onClick={() => store.quitarLinea(linea.key)}
+                    className="text-dark-600 hover:text-red-400 p-1.5 transition-colors"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -184,20 +220,28 @@ export default function VentasPage() {
       </div>
 
       {/* ── Panel derecho: totales + cobro ─────────────────── */}
-      <div className="md:w-80 bg-dark-800 border-t md:border-t-0 md:border-l border-dark-700
+      <div className="md:w-84 bg-dark-800 border-t md:border-t-0 md:border-l border-dark-700
                       flex flex-col p-4 gap-4 flex-shrink-0">
 
         {/* Cliente */}
-        <button
-          onClick={() => setModalCliente(true)}
-          className="flex items-center gap-2 w-full px-4 py-3 bg-dark-700 rounded-xl
-                     hover:bg-dark-600 transition-colors text-left"
-        >
-          <User size={18} className="text-dark-500 flex-shrink-0" />
-          <span className={`text-sm ${store.clienteId ? 'text-white' : 'text-dark-500'}`}>
-            {store.clienteNombre || 'Seleccionar cliente...'}
-          </span>
-        </button>
+        <div>
+          <label className="block text-dark-500 text-xs font-medium mb-1 uppercase tracking-wide">
+            Cliente
+          </label>
+          <button
+            onClick={() => setModalCliente(true)}
+            className="flex items-center justify-between w-full px-4 py-3 bg-dark-700 rounded-xl
+                       hover:bg-dark-600 transition-colors text-left"
+          >
+            <div className="flex items-center gap-2 truncate">
+              <User size={18} className="text-dark-500 flex-shrink-0" />
+              <span className={`text-sm ${store.clienteId ? 'text-white font-medium' : 'text-dark-500'}`}>
+                {store.clienteNombre || 'Seleccionar cliente...'}
+              </span>
+            </div>
+            <span className="text-xs text-primary-400 font-medium">Cambiar</span>
+          </button>
+        </div>
 
         {/* Forma de pago */}
         <div>
@@ -209,7 +253,7 @@ export default function VentasPage() {
                 onClick={() => store.setFormaPago(id)}
                 className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
                   ${store.formaPago === id
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-white shadow-lg'
                     : 'bg-dark-700 text-dark-500 hover:text-white hover:bg-dark-600'
                   }`}
               >
@@ -224,11 +268,11 @@ export default function VentasPage() {
         {store.formaPago === 'EFECTIVO' && (
           <div>
             <label className="block text-dark-500 text-xs font-medium mb-1 uppercase tracking-wide">
-              Valor recibido
+              Efectivo Recibido ($)
             </label>
             <input
               type="number"
-              className="input-field"
+              className="input-field text-lg font-bold text-white"
               value={store.valorRecibido || ''}
               onChange={e => store.setValorRecibido(e.target.value)}
               placeholder="0"
@@ -255,14 +299,14 @@ export default function VentasPage() {
               <span>{formatCOP(store.domicilioValor)}</span>
             </div>
           )}
-          <div className="flex justify-between text-lg font-bold text-white pt-2 border-t border-dark-700">
+          <div className="flex justify-between text-xl font-bold text-white pt-2 border-t border-dark-700">
             <span>TOTAL</span>
             <span className="text-primary-400">{formatCOP(total)}</span>
           </div>
           {store.formaPago === 'EFECTIVO' && cambio > 0 && (
-            <div className="flex justify-between text-sm text-green-400">
-              <span>Cambio</span>
-              <span className="font-semibold">{formatCOP(cambio)}</span>
+            <div className="flex justify-between text-base text-green-400 bg-green-950/40 p-2.5 rounded-xl border border-green-800">
+              <span>Cambio a devolver:</span>
+              <span className="font-bold">{formatCOP(cambio)}</span>
             </div>
           )}
         </div>
@@ -271,27 +315,139 @@ export default function VentasPage() {
         <div className="flex gap-3 mt-auto">
           <button
             onClick={() => store.limpiar()}
-            className="btn-secondary flex-1"
+            className="btn-secondary flex-1 py-3"
             disabled={cobrando}
           >
             Cancelar
           </button>
           <button
             onClick={handleCobrar}
-            className="btn-primary flex-1"
+            className="btn-primary flex-1 py-3 font-bold text-base"
             disabled={cobrando || store.lineas.length === 0}
           >
-            {cobrando ? 'Procesando...' : '✓ Cobrar'}
+            {cobrando ? 'Procesando...' : '✓ Cobrar (F10)'}
           </button>
         </div>
       </div>
 
-      {/* ── Modal selector de cliente ──────────────────────── */}
+      {/* ── MODAL: SELECCIONAR PRESENTACIÓN / FRACCIÓN ────────────── */}
+      {modalFraccion && productoFraccion && (
+        <div
+          className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4"
+          onClick={() => setModalFraccion(false)}
+        >
+          <div
+            className="bg-dark-800 rounded-2xl w-full max-w-md p-6 border border-dark-700 shadow-2xl space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start border-b border-dark-700 pb-3">
+              <div>
+                <span className="text-xs font-semibold text-primary-400 uppercase tracking-wide">
+                  Seleccionar Presentación
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  {productoFraccion.nombre}
+                </h3>
+              </div>
+              <button
+                onClick={() => setModalFraccion(false)}
+                className="text-dark-500 hover:text-white p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-dark-400 text-xs">
+              ¿Cómo desea despachar este producto al cliente?
+            </p>
+
+            <div className="space-y-2">
+              {/* Opción Caja Completa */}
+              <button
+                onClick={() => elegirPresentacion('CAJA')}
+                className="w-full flex items-center justify-between p-3.5 bg-dark-700/80 hover:bg-primary-900/30 hover:border-primary-500 border border-dark-600 rounded-xl text-left transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary-600/20 text-primary-400 rounded-xl flex items-center justify-center">
+                    <Package size={20} />
+                  </div>
+                  <div>
+                    <p className="text-white font-bold text-sm">Caja Completa</p>
+                    <p className="text-dark-400 text-xs">
+                      Contiene {productoFraccion.contenido_caja} unidades
+                    </p>
+                  </div>
+                </div>
+                <span className="text-primary-400 font-bold text-base">
+                  {formatCOP(productoFraccion.precio_caja || productoFraccion.precio_venta)}
+                </span>
+              </button>
+
+              {/* Opción Blister (si existe) */}
+              {productoFraccion.contenido_blister > 0 && (
+                <button
+                  onClick={() => elegirPresentacion('BLISTER')}
+                  className="w-full flex items-center justify-between p-3.5 bg-dark-700/80 hover:bg-primary-900/30 hover:border-primary-500 border border-dark-600 rounded-xl text-left transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-600/20 text-blue-400 rounded-xl flex items-center justify-center">
+                      <Layers size={20} />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold text-sm">Blister / Paquete</p>
+                      <p className="text-dark-400 text-xs">
+                        Contiene {Math.floor(productoFraccion.contenido_caja / productoFraccion.contenido_blister)} unidades
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-primary-400 font-bold text-base">
+                    {formatCOP(productoFraccion.precio_blister)}
+                  </span>
+                </button>
+              )}
+
+              {/* Opción Unidad / Pastilla Suelta */}
+              {(productoFraccion.precio_unidad > 0 || productoFraccion.contenido_caja > 1) && (
+                <button
+                  onClick={() => elegirPresentacion('UNIDAD')}
+                  className="w-full flex items-center justify-between p-3.5 bg-dark-700/80 hover:bg-primary-900/30 hover:border-primary-500 border border-dark-600 rounded-xl text-left transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-600/20 text-green-400 rounded-xl flex items-center justify-center">
+                      <Pill size={20} />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold text-sm">Unidad Suelta</p>
+                      <p className="text-dark-400 text-xs">1 unidad / pastilla individual</p>
+                    </div>
+                  </div>
+                  <span className="text-primary-400 font-bold text-base">
+                    {formatCOP(productoFraccion.precio_unidad || (productoFraccion.precio_venta / productoFraccion.contenido_caja))}
+                  </span>
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => setModalFraccion(false)}
+              className="btn-secondary w-full py-2.5 text-xs mt-2"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: SELECTOR DE CLIENTE ────────────────────────────── */}
       {modalCliente && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4"
-          onClick={() => setModalCliente(false)}>
-          <div className="bg-dark-800 rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col"
-            onClick={e => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/75 z-50 flex items-end md:items-center justify-center p-4"
+          onClick={() => setModalCliente(false)}
+        >
+          <div
+            className="bg-dark-800 rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col border border-dark-700 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 border-b border-dark-700">
               <h3 className="text-white font-semibold mb-3">Seleccionar cliente</h3>
               <input
@@ -302,7 +458,7 @@ export default function VentasPage() {
                 autoFocus
               />
             </div>
-            <div className="overflow-auto flex-1">
+            <div className="overflow-auto flex-1 divide-y divide-dark-700">
               {clientes.map(c => (
                 <button
                   key={c.id}
@@ -313,12 +469,13 @@ export default function VentasPage() {
                     setClientes([])
                   }}
                   className="w-full flex items-center justify-between px-4 py-3
-                             hover:bg-dark-700 border-b border-dark-700 last:border-0 text-left"
+                             hover:bg-dark-700 text-left transition-colors"
                 >
                   <div>
                     <p className="text-white text-sm font-medium">{c.nombre}</p>
                     <p className="text-dark-500 text-xs">{c.nit || c.telefono || '—'}</p>
                   </div>
+                  <span className="text-xs text-primary-400 font-semibold">Seleccionar</span>
                 </button>
               ))}
               {busqCliente && clientes.length === 0 && (
@@ -328,6 +485,7 @@ export default function VentasPage() {
           </div>
         </div>
       )}
+
     </div>
   )
 }

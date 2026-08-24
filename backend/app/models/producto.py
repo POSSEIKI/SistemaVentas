@@ -37,6 +37,20 @@ class Producto(Base):
     stock_actual = Column(Numeric(12, 3), nullable=False, default=0)
     imagen_url = Column(String(500))
     activo = Column(Boolean, default=True, nullable=False)
+
+    # Fraccionamiento y Multi-Presentación
+    maneja_fracciones = Column(Boolean, default=False, nullable=False)
+    contenido_caja = Column(Integer, default=1, nullable=False)
+    contenido_blister = Column(Integer, default=0, nullable=False)
+    precio_caja = Column(Numeric(12, 2), default=0, nullable=False)
+    precio_blister = Column(Numeric(12, 2), default=0, nullable=False)
+    precio_unidad = Column(Numeric(12, 2), default=0, nullable=False)
+
+    # Atributos adicionales de búsqueda y clasificación
+    laboratorio = Column(String(100))
+    principio_activo = Column(String(200))
+    ubicacion = Column(String(50))
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     categoria = relationship("Categoria", back_populates="productos")

@@ -9,14 +9,40 @@ export const useVentaStore = create((set, get) => ({
   clienteNombre: '',
   observaciones: '',
 
-  // ─── Agregar o incrementar producto ────────────────────────────────────────
-  agregarProducto: (producto) => {
+  // ─── Agregar producto con soporte de presentación / fracción ──────────────
+  agregarProducto: (producto, presentacion = 'DIRECTO', precioPersonalizado = null, factorPersonalizado = 1) => {
     const { lineas } = get()
-    const existente = lineas.find(l => l.producto_id === producto.id)
+
+    let precio = precioPersonalizado !== null ? parseFloat(precioPersonalizado) : parseFloat(producto.precio_venta || 0)
+    let factor = factorPersonalizado
+    let etiqueta = ''
+
+    if (producto.maneja_fracciones) {
+      if (presentacion === 'CAJA') {
+        precio = parseFloat(producto.precio_caja || producto.precio_venta || 0)
+        factor = parseInt(producto.contenido_caja || 1)
+        etiqueta = ` [Caja x${factor}]`
+      } else if (presentacion === 'BLISTER') {
+        precio = parseFloat(producto.precio_blister || 0)
+        const unidsBlister = producto.contenido_blister > 0 
+          ? (producto.contenido_caja / producto.contenido_blister) 
+          : 1
+        factor = parseInt(unidsBlister)
+        etiqueta = ` [Blister x${factor}]`
+      } else if (presentacion === 'UNIDAD') {
+        precio = parseFloat(producto.precio_unidad || 0)
+        factor = 1
+        etiqueta = ` [Unidad]`
+      }
+    }
+
+    const itemKey = `${producto.id}_${presentacion}`
+    const existente = lineas.find(l => l.key === itemKey)
+
     if (existente) {
       set({
         lineas: lineas.map(l =>
-          l.producto_id === producto.id
+          l.key === itemKey
             ? { ...l, cantidad: l.cantidad + 1 }
             : l
         )
@@ -24,10 +50,14 @@ export const useVentaStore = create((set, get) => ({
     } else {
       set({
         lineas: [...lineas, {
+          key: itemKey,
           producto_id: producto.id,
-          nombre: producto.nombre,
-          precio_unitario: parseFloat(producto.precio_venta),
-          iva_porcentaje: parseFloat(producto.iva_porcentaje),
+          nombre: `${producto.nombre}${etiqueta}`,
+          nombre_base: producto.nombre,
+          presentacion: presentacion,
+          factor_multiplicador: factor,
+          precio_unitario: precio,
+          iva_porcentaje: parseFloat(producto.iva_porcentaje || 0),
           cantidad: 1,
           descuento_porcentaje: 0,
         }]
@@ -35,28 +65,28 @@ export const useVentaStore = create((set, get) => ({
     }
   },
 
-  actualizarCantidad: (producto_id, cantidad) => {
+  actualizarCantidad: (itemKey, cantidad) => {
     if (cantidad <= 0) {
-      get().quitarLinea(producto_id)
+      get().quitarLinea(itemKey)
       return
     }
     set({
       lineas: get().lineas.map(l =>
-        l.producto_id === producto_id ? { ...l, cantidad } : l
+        l.key === itemKey ? { ...l, cantidad } : l
       )
     })
   },
 
-  aplicarDescuentoLinea: (producto_id, descuento_porcentaje) => {
+  aplicarDescuentoLinea: (itemKey, descuento_porcentaje) => {
     set({
       lineas: get().lineas.map(l =>
-        l.producto_id === producto_id ? { ...l, descuento_porcentaje } : l
+        l.key === itemKey ? { ...l, descuento_porcentaje } : l
       )
     })
   },
 
-  quitarLinea: (producto_id) => {
-    set({ lineas: get().lineas.filter(l => l.producto_id !== producto_id) })
+  quitarLinea: (itemKey) => {
+    set({ lineas: get().lineas.filter(l => l.key !== itemKey) })
   },
 
   setFormaPago: (fp) => set({ formaPago: fp }),
@@ -113,6 +143,8 @@ export const useVentaStore = create((set, get) => ({
         cantidad: l.cantidad,
         precio_unitario: l.precio_unitario,
         descuento_porcentaje: l.descuento_porcentaje,
+        presentacion: l.presentacion,
+        factor_multiplicador: l.factor_multiplicador,
       })),
     }
   },

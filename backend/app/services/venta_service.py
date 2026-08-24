@@ -34,11 +34,15 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
         if not producto:
             raise HTTPException(status_code=404, detail=f"Producto {linea.producto_id} no encontrado")
 
+        factor = getattr(linea, 'factor_multiplicador', Decimal('1')) or Decimal('1')
+        unidades_a_descontar = (linea.cantidad * factor)
+        presentacion = getattr(linea, 'presentacion', 'UNIDAD') or 'UNIDAD'
+
         if producto.afecta_inventario and not producto.es_servicio:
-            if producto.stock_actual < linea.cantidad:
+            if producto.stock_actual < unidades_a_descontar:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Stock insuficiente para '{producto.nombre}'. Disponible: {producto.stock_actual}"
+                    detail=f"Stock insuficiente para '{producto.nombre}'. Requiere {unidades_a_descontar} unid(s), disponible: {producto.stock_actual}"
                 )
 
         precio = linea.precio_unitario
@@ -63,20 +67,23 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
             iva_valor=iva_val,
             subtotal=sub_linea,
             total_linea=total_linea,
+            presentacion=presentacion,
+            factor_multiplicador=factor,
         ))
 
         # Actualizar stock
         if producto.afecta_inventario and not producto.es_servicio:
             stock_ant = producto.stock_actual
-            producto.stock_actual = producto.stock_actual - linea.cantidad
+            producto.stock_actual = producto.stock_actual - unidades_a_descontar
             mov = MovimientoInventario(
                 producto_id=producto.id,
                 tipo="SALIDA",
-                cantidad=linea.cantidad,
+                cantidad=unidades_a_descontar,
                 stock_anterior=stock_ant,
                 stock_nuevo=producto.stock_actual,
                 referencia_tipo="FACTURA",
                 usuario_id=usuario_id,
+                observacion=f"Venta {linea.cantidad} ({presentacion})",
             )
             db.add(mov)
 

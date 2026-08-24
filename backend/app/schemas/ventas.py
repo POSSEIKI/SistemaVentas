@@ -19,20 +19,49 @@ class ProductoCreate(BaseModel):
     descripcion: Optional[str] = None
     codigo_barras: Optional[str] = None
 
+    # Fraccionamiento y Multi-Presentación
+    maneja_fracciones: bool = False
+    contenido_caja: int = 1
+    contenido_blister: int = 0
+    precio_caja: Decimal = Decimal("0")
+    precio_blister: Decimal = Decimal("0")
+    precio_unidad: Decimal = Decimal("0")
+
+    # Clasificación
+    laboratorio: Optional[str] = None
+    principio_activo: Optional[str] = None
+    ubicacion: Optional[str] = None
+
 class ProductoUpdate(BaseModel):
     nombre: Optional[str] = None
     categoria_id: Optional[int] = None
+    unidad_medida_id: Optional[int] = None
     precio_venta: Optional[Decimal] = None
     precio_costo: Optional[Decimal] = None
     iva_porcentaje: Optional[Decimal] = None
     stock_minimo: Optional[Decimal] = None
+    stock_actual: Optional[Decimal] = None
     activo: Optional[bool] = None
     descripcion: Optional[str] = None
+    codigo_barras: Optional[str] = None
+
+    maneja_fracciones: Optional[bool] = None
+    contenido_caja: Optional[int] = None
+    contenido_blister: Optional[int] = None
+    precio_caja: Optional[Decimal] = None
+    precio_blister: Optional[Decimal] = None
+    precio_unidad: Optional[Decimal] = None
+
+    laboratorio: Optional[str] = None
+    principio_activo: Optional[str] = None
+    ubicacion: Optional[str] = None
 
 class ProductoOut(BaseModel):
     id: int
     codigo: str
+    codigo_barras: Optional[str] = None
     nombre: str
+    descripcion: Optional[str] = None
     precio_venta: Decimal
     precio_costo: Decimal
     iva_porcentaje: Decimal
@@ -45,6 +74,17 @@ class ProductoOut(BaseModel):
     categoria_nombre: Optional[str] = None
     unidad_medida_id: Optional[int] = None
     unidad_abreviatura: Optional[str] = None
+
+    maneja_fracciones: bool = False
+    contenido_caja: int = 1
+    contenido_blister: int = 0
+    precio_caja: Decimal = Decimal("0")
+    precio_blister: Decimal = Decimal("0")
+    precio_unidad: Decimal = Decimal("0")
+
+    laboratorio: Optional[str] = None
+    principio_activo: Optional[str] = None
+    ubicacion: Optional[str] = None
     model_config = {"from_attributes": True}
 
 # ─── Clientes ─────────────────────────────────────────────────────────────────
@@ -78,6 +118,8 @@ class LineaFacturaCreate(BaseModel):
     cantidad: Decimal
     precio_unitario: Decimal
     descuento_porcentaje: Decimal = Decimal("0")
+    presentacion: str = "UNIDAD"  # CAJA | BLISTER | UNIDAD | DIRECTO
+    factor_multiplicador: Decimal = Decimal("1")
 
 class FacturaCreate(BaseModel):
     cliente_id: int
@@ -99,6 +141,8 @@ class LineaFacturaOut(BaseModel):
     iva_valor: Decimal
     subtotal: Decimal
     total_linea: Decimal
+    presentacion: str = "UNIDAD"
+    factor_multiplicador: Decimal = Decimal("1")
     model_config = {"from_attributes": True}
 
 class FacturaOut(BaseModel):

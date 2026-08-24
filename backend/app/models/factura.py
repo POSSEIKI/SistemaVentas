@@ -40,5 +40,7 @@ class FacturaDetalle(Base):
     iva_valor = Column(Numeric(12, 2), default=0)
     subtotal = Column(Numeric(12, 2), nullable=False)
     total_linea = Column(Numeric(12, 2), nullable=False)
+    presentacion = Column(String(20), default="UNIDAD")  # CAJA | BLISTER | UNIDAD | DIRECTO
+    factor_multiplicador = Column(Numeric(12, 3), default=1)
     factura = relationship("Factura", back_populates="lineas")
     producto = relationship("Producto", back_populates="detalle_facturas")

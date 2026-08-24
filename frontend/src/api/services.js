@@ -11,8 +11,14 @@ export const productosApi = {
   listar: (params) => api.get('/productos', { params }).then(r => r.data),
   crear: (datos) => api.post('/productos', datos).then(r => r.data),
   actualizar: (id, datos) => api.patch(`/productos/${id}`, datos).then(r => r.data),
+  eliminar: (id) => api.delete(`/productos/${id}`).then(r => r.data),
   categorias: () => api.get('/productos/categorias/lista').then(r => r.data),
+  crearCategoria: (nombre) => api.post('/productos/categorias', { nombre }).then(r => r.data),
   unidades: () => api.get('/productos/unidades/lista').then(r => r.data),
+  descargarPlantillaUrl: () => `${api.defaults.baseURL}/productos/plantilla-excel`,
+  importarExcel: (formData) => api.post('/productos/importar-excel', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data),
 }
 
 export const clientesApi = {
