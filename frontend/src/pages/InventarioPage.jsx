@@ -157,17 +157,44 @@ export default function InventarioPage() {
       }
 
       if (productoEditando) {
-        await productosApi.actualizar(productoEditando.id, payload)
+        const actualizado = await productosApi.actualizar(productoEditando.id, payload)
         toast.success('Producto actualizado exitosamente')
+        setProductos(prev => [actualizado, ...prev.filter(p => p.id !== actualizado.id)])
       } else {
-        await productosApi.crear(payload)
+        const nuevo = await productosApi.crear(payload)
         toast.success('Producto creado exitosamente')
+        setProductos(prev => [nuevo, ...prev])
       }
 
       setModalProducto(false)
-      cargarDatos()
+      setProductoEditando(null)
     } catch (err) {
-      toast.error(err.message || 'Error al guardar producto')
+      const msg = err.message || 'Error al guardar producto'
+      if (msg.includes('Ya existe un producto con el código')) {
+        toast((t) => (
+          <div className="space-y-2">
+            <p className="text-xs text-white">
+              ⚠️ El producto con código <b>"{formProducto.codigo}"</b> ya existe.
+            </p>
+            <button
+              onClick={async () => {
+                toast.dismiss(t.id)
+                try {
+                  const prod = await productosApi.porCodigo(formProducto.codigo)
+                  abrirEditar(prod)
+                } catch {
+                  toast.error('No se pudo cargar el producto existente')
+                }
+              }}
+              className="bg-primary-600 hover:bg-primary-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold w-full"
+            >
+              ✏️ Cargar para editar ahora
+            </button>
+          </div>
+        ), { duration: 8000 })
+      } else {
+        toast.error(msg)
+      }
     } finally {
       setGuardando(false)
     }

@@ -91,6 +91,14 @@ async def listar_unidades(db: AsyncSession = Depends(get_db), _=Depends(get_curr
     result = await db.execute(select(UnidadMedida).where(UnidadMedida.activo == True).order_by(UnidadMedida.nombre))
     return [{"id": u.id, "nombre": u.nombre, "abreviatura": u.abreviatura} for u in result.scalars().all()]
 
+@router.get("/por-codigo/{codigo}", response_model=ProductoOut)
+async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+    result = await db.execute(select(Producto).where(Producto.codigo == codigo.strip()))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    return _to_out(p)
+
 @router.get("", response_model=List[ProductoOut])
 async def listar_productos(
     categoria_id: Optional[int] = None,
@@ -104,7 +112,7 @@ async def listar_productos(
         query = query.where(Producto.activo == activo)
     if categoria_id:
         query = query.where(Producto.categoria_id == categoria_id)
-    result = await db.execute(query.order_by(Producto.nombre).limit(limite))
+    result = await db.execute(query.order_by(Producto.id.desc()).limit(limite))
     return [_to_out(p) for p in result.scalars().all()]
 
 @router.post("", response_model=ProductoOut)
@@ -115,8 +123,12 @@ async def crear_producto(
 ):
     # Validar código único
     result = await db.execute(select(Producto).where(Producto.codigo == datos.codigo.strip()))
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"Ya existe un producto con el código '{datos.codigo}'")
+    existente = result.scalar_one_or_none()
+    if existente:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ya existe un producto con el código '{datos.codigo}' (ID: {existente.id}). Búscalo en la tabla para modificarlo o usa otro código."
+        )
 
     # Si es fraccionado y precio_venta no fue puesto, usar precio_caja o precio_unidad
     p_data = datos.model_dump()
