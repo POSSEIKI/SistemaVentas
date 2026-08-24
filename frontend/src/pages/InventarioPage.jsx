@@ -63,17 +63,22 @@ export default function InventarioPage() {
   const [resumenImportacion, setResumenImportacion] = useState(null)
   const fileInputRef = useRef(null)
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (busq = '') => {
     setCargando(true)
     try {
-      const [prods, cats, unis] = await Promise.all([
-        productosApi.listar({ activo: true, limite: 1000 }),
-        productosApi.categorias(),
-        productosApi.unidades(),
-      ])
-      setProductos(prods)
-      setCategorias(cats)
-      setUnidades(unis)
+      if (busq.trim().length >= 2) {
+        const prods = await productosApi.buscar(busq.trim())
+        setProductos(prods)
+      } else {
+        const [prods, cats, unis] = await Promise.all([
+          productosApi.listar({ activo: true, limite: 150 }),
+          productosApi.categorias(),
+          productosApi.unidades(),
+        ])
+        setProductos(prods)
+        setCategorias(cats)
+        setUnidades(unis)
+      }
     } catch {
       toast.error('Error cargando inventario')
     } finally {
@@ -84,6 +89,14 @@ export default function InventarioPage() {
   useEffect(() => {
     cargarDatos()
   }, [])
+
+  const handleBusquedaChange = (val) => {
+    setBusqueda(val)
+    clearTimeout(window._invSearchTimer)
+    window._invSearchTimer = setTimeout(() => {
+      cargarDatos(val)
+    }, 300)
+  }
 
   const abrirCrear = () => {
     setProductoEditando(null)
@@ -293,12 +306,12 @@ export default function InventarioPage() {
           <input
             className="input-field pl-9 py-2"
             value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
+            onChange={e => handleBusquedaChange(e.target.value)}
             placeholder="Buscar por nombre, código, barra, principio activo..."
           />
           {busqueda && (
             <button
-              onClick={() => setBusqueda('')}
+              onClick={() => { setBusqueda(''); cargarDatos('') }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
             >
               <X size={14} />
