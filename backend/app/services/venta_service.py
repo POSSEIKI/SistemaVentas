@@ -1,12 +1,18 @@
 from decimal import Decimal
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
+from sqlalchemy.orm import joinedload
+
 from app.models.factura import Factura, FacturaDetalle
 from app.models.producto import Producto
+from app.models.cliente import Cliente
+from app.models.bono import BonoCliente
 from app.models.inventario import Compra, CompraDetalle, MovimientoInventario
 from app.models.configuracion import ConfiguracionEmpresa
-from app.schemas.ventas import FacturaCreate, CompraCreate
+from app.schemas.ventas import FacturaCreate, CompraCreate, DevolucionFacturaRequest
 
 async def _siguiente_numero(db: AsyncSession, prefijo: str, modelo, campo) -> str:
     result = await db.execute(
@@ -37,12 +43,14 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
         factor = getattr(linea, 'factor_multiplicador', Decimal('1')) or Decimal('1')
         unidades_a_descontar = (linea.cantidad * factor)
         presentacion = getattr(linea, 'presentacion', 'UNIDAD') or 'UNIDAD'
+        es_encargo = getattr(linea, 'es_encargo', False) or False
 
-        if producto.afecta_inventario and not producto.es_servicio:
+        # Validación estricta de stock si no es encargo y afecta inventario
+        if producto.afecta_inventario and not producto.es_servicio and not es_encargo:
             if producto.stock_actual < unidades_a_descontar:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Stock insuficiente para '{producto.nombre}'. Requiere {unidades_a_descontar} unid(s), disponible: {producto.stock_actual}"
+                    detail=f"Stock insuficiente para '{producto.nombre}'. Requiere {unidades_a_descontar} unidad(es), disponible en estantería: {producto.stock_actual}. Puedes autorizar la venta marcándola como 'Pedido por Encargo'."
                 )
 
         precio = linea.precio_unitario
@@ -69,12 +77,17 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
             total_linea=total_linea,
             presentacion=presentacion,
             factor_multiplicador=factor,
+            es_encargo=es_encargo,
         ))
 
         # Actualizar stock
         if producto.afecta_inventario and not producto.es_servicio:
             stock_ant = producto.stock_actual
             producto.stock_actual = producto.stock_actual - unidades_a_descontar
+            obs_mov = f"Venta {linea.cantidad} ({presentacion})"
+            if es_encargo:
+                obs_mov += " [ENCARGO]"
+
             mov = MovimientoInventario(
                 producto_id=producto.id,
                 tipo="SALIDA",
@@ -83,11 +96,25 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
                 stock_nuevo=producto.stock_actual,
                 referencia_tipo="FACTURA",
                 usuario_id=usuario_id,
-                observacion=f"Venta {linea.cantidad} ({presentacion})",
+                observacion=obs_mov,
             )
             db.add(mov)
 
     total = (subtotal + iva_total + datos.domicilio_valor).quantize(Decimal("0.01"))
+
+    # Procesar redención de bono / saldo a favor si fue aplicado
+    if datos.bono_codigo and datos.bono_monto_aplicado and datos.bono_monto_aplicado > Decimal("0"):
+        res_bono = await db.execute(select(BonoCliente).where(BonoCliente.codigo == datos.bono_codigo.strip().upper(), BonoCliente.estado == "ACTIVO"))
+        bono = res_bono.scalar_one_or_none()
+        if not bono:
+            raise HTTPException(status_code=400, detail=f"El bono '{datos.bono_codigo}' no es válido o ya fue redimido")
+        if bono.saldo_disponible < datos.bono_monto_aplicado:
+            raise HTTPException(status_code=400, detail=f"El saldo del bono ({bono.saldo_disponible}) es menor al monto a aplicar ({datos.bono_monto_aplicado})")
+
+        bono.saldo_disponible -= datos.bono_monto_aplicado
+        if bono.saldo_disponible <= Decimal("0"):
+            bono.estado = "REDIMIDO"
+
     cambio = max(Decimal("0"), datos.valor_recibido - total)
 
     factura = Factura(
@@ -111,14 +138,13 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
     return factura
 
 async def anular_factura(factura_id: int, motivo: str, usuario_id: int, db: AsyncSession) -> Factura:
-    result = await db.execute(select(Factura).where(Factura.id == factura_id))
+    result = await db.execute(select(Factura).options(joinedload(Factura.lineas)).where(Factura.id == factura_id))
     factura = result.scalar_one_or_none()
     if not factura:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
-    if factura.estado == "ANULADA":
-        raise HTTPException(status_code=400, detail="La factura ya está anulada")
+    if factura.estado in ["ANULADA", "DEVUELTA"]:
+        raise HTTPException(status_code=400, detail="La factura ya fue anulada o devuelta previamente")
 
-    from datetime import datetime, timezone
     factura.estado = "ANULADA"
     factura.anulada_por = usuario_id
     factura.anulada_en = datetime.now(timezone.utc)
@@ -128,13 +154,16 @@ async def anular_factura(factura_id: int, motivo: str, usuario_id: int, db: Asyn
     for linea in factura.lineas:
         result = await db.execute(select(Producto).where(Producto.id == linea.producto_id))
         producto = result.scalar_one_or_none()
+        factor = Decimal(str(linea.factor_multiplicador or 1))
+        unids_retorno = (Decimal(str(linea.cantidad)) * factor)
+
         if producto and producto.afecta_inventario and not producto.es_servicio:
             stock_ant = producto.stock_actual
-            producto.stock_actual = producto.stock_actual + linea.cantidad
+            producto.stock_actual = producto.stock_actual + unids_retorno
             mov = MovimientoInventario(
                 producto_id=producto.id,
                 tipo="DEVOLUCION",
-                cantidad=linea.cantidad,
+                cantidad=unids_retorno,
                 stock_anterior=stock_ant,
                 stock_nuevo=producto.stock_actual,
                 referencia_tipo="ANULACION",
@@ -148,7 +177,153 @@ async def anular_factura(factura_id: int, motivo: str, usuario_id: int, db: Asyn
     await db.refresh(factura)
     return factura
 
+async def procesar_devolucion_factura(
+    factura_id: int,
+    datos: DevolucionFacturaRequest,
+    usuario_id: int,
+    db: AsyncSession
+) -> Dict[str, Any]:
+    result = await db.execute(
+        select(Factura)
+        .options(joinedload(Factura.lineas), joinedload(Factura.cliente))
+        .where(Factura.id == factura_id)
+    )
+    factura = result.scalar_one_or_none()
+    if not factura:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    if factura.estado in ["ANULADA", "DEVUELTA"]:
+        raise HTTPException(status_code=400, detail="La factura ya fue anulada o devuelta previamente")
+
+    factura.estado = "DEVUELTA"
+    factura.anulada_por = usuario_id
+    factura.anulada_en = datetime.now(timezone.utc)
+    factura.motivo_anulacion = f"[{datos.tipo_reembolso}] {datos.motivo}"
+
+    # 1. Revertir inventario
+    for linea in factura.lineas:
+        result_p = await db.execute(select(Producto).where(Producto.id == linea.producto_id))
+        producto = result_p.scalar_one_or_none()
+        factor = Decimal(str(linea.factor_multiplicador or 1))
+        unids_retorno = (Decimal(str(linea.cantidad)) * factor)
+
+        if producto and producto.afecta_inventario and not producto.es_servicio:
+            stock_ant = producto.stock_actual
+            producto.stock_actual = producto.stock_actual + unids_retorno
+            mov = MovimientoInventario(
+                producto_id=producto.id,
+                tipo="DEVOLUCION",
+                cantidad=unids_retorno,
+                stock_anterior=stock_ant,
+                stock_nuevo=producto.stock_actual,
+                referencia_tipo="DEVOLUCION",
+                referencia_id=factura_id,
+                usuario_id=usuario_id,
+                observacion=f"Devolución factura {factura.numero}: {datos.motivo}",
+            )
+            db.add(mov)
+
+    # 2. Generar bono si el tipo de reembolso es BONO
+    bono_obj = None
+    if datos.tipo_reembolso == "BONO":
+        res_count = await db.execute(select(func.count(BonoCliente.id)))
+        num_bono = (res_count.scalar() or 0) + 1
+        codigo_bono = f"BONO-{num_bono:05d}"
+
+        bono_obj = BonoCliente(
+            codigo=codigo_bono,
+            cliente_id=factura.cliente_id,
+            factura_origen_id=factura.id,
+            monto_inicial=factura.total,
+            saldo_disponible=factura.total,
+            motivo=f"Devolución factura {factura.numero}: {datos.motivo}",
+            tipo_reembolso="BONO",
+            estado="ACTIVO",
+        )
+        db.add(bono_obj)
+
+    await db.commit()
+    if bono_obj:
+        await db.refresh(bono_obj)
+
+    return {
+        "mensaje": f"Devolución procesada con éxito ({'Bono generado' if bono_obj else 'Reembolso en efectivo'})",
+        "factura_id": factura.id,
+        "factura_numero": factura.numero,
+        "monto_reembolsado": float(factura.total),
+        "tipo_reembolso": datos.tipo_reembolso,
+        "bono": {
+            "id": bono_obj.id,
+            "codigo": bono_obj.codigo,
+            "saldo_disponible": float(bono_obj.saldo_disponible),
+            "cliente_nombre": factura.cliente.nombre if factura.cliente else "Cliente",
+        } if bono_obj else None
+    }
+
+async def listar_bonos_cliente(cliente_id: int, db: AsyncSession) -> List[Dict[str, Any]]:
+    stmt = (
+        select(BonoCliente)
+        .where(
+            BonoCliente.cliente_id == cliente_id,
+            BonoCliente.estado == "ACTIVO",
+            BonoCliente.saldo_disponible > 0
+        )
+        .order_by(BonoCliente.id.desc())
+    )
+    result = await db.execute(stmt)
+    bonos = result.scalars().all()
+    return [
+        {
+            "id": b.id,
+            "codigo": b.codigo,
+            "monto_inicial": float(b.monto_inicial),
+            "saldo_disponible": float(b.saldo_disponible),
+            "motivo": b.motivo,
+            "estado": b.estado,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+        }
+        for b in bonos
+    ]
+
+async def verificar_bono_codigo(codigo: str, db: AsyncSession) -> Dict[str, Any]:
+    stmt = (
+        select(BonoCliente)
+        .options(joinedload(BonoCliente.cliente))
+        .where(BonoCliente.codigo == codigo.strip().upper())
+    )
+    result = await db.execute(stmt)
+    b = result.scalar_one_or_none()
+    if not b:
+        raise HTTPException(status_code=404, detail=f"Bono con código '{codigo}' no encontrado")
+    if b.estado != "ACTIVO" or b.saldo_disponible <= 0:
+        raise HTTPException(status_code=400, detail=f"El bono '{codigo}' ya fue redimido o no tiene saldo disponible")
+
+    return {
+        "id": b.id,
+        "codigo": b.codigo,
+        "cliente_id": b.cliente_id,
+        "cliente_nombre": b.cliente.nombre if b.cliente else "Cliente",
+        "monto_inicial": float(b.monto_inicial),
+        "saldo_disponible": float(b.saldo_disponible),
+        "estado": b.estado,
+    }
+
 async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -> Compra:
+    # 0. Validación Anti-Duplicados: Evitar ingresar dos veces la misma factura del proveedor
+    if datos.numero_factura_proveedor and datos.numero_factura_proveedor.strip():
+        num_clean = datos.numero_factura_proveedor.strip()
+        stmt_check = select(Compra).options(joinedload(Compra.proveedor)).where(Compra.numero_factura_proveedor == num_clean)
+        if datos.proveedor_id:
+            stmt_check = stmt_check.where(Compra.proveedor_id == datos.proveedor_id)
+        res_dup = await db.execute(stmt_check)
+        c_dup = res_dup.scalar_one_or_none()
+        if c_dup:
+            fecha_str = c_dup.fecha.strftime('%d/%m/%Y a las %H:%M') if c_dup.fecha else 'fecha previa'
+            prov_str = f" del proveedor {c_dup.proveedor.razon_social}" if c_dup.proveedor else ""
+            raise HTTPException(
+                status_code=400,
+                detail=f"La factura de compra N° '{num_clean}'{prov_str} ya fue registrada previamente en el sistema (Comprobante {c_dup.numero} del {fecha_str} - Total: ${float(c_dup.total):,.0f}). No se puede volver a ingresar para evitar duplicidad de inventario y costos."
+            )
+
     numero = await _siguiente_numero(db, "CO", Compra, "numero")
     subtotal = Decimal("0")
     iva_total = Decimal("0")
@@ -175,13 +350,33 @@ async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -
             precio_sugerido=linea.precio_sugerido,
         ))
 
-        # Actualizar stock y costo
+        # Actualizar stock, costo, venta y parametrización de fracciones
         if producto.afecta_inventario and not producto.es_servicio:
             stock_ant = producto.stock_actual
             producto.stock_actual = producto.stock_actual + linea.cantidad
             producto.precio_costo = linea.costo_unitario
             if linea.precio_sugerido:
                 producto.precio_venta = linea.precio_sugerido
+
+            if linea.maneja_fracciones is not None:
+                producto.maneja_fracciones = linea.maneja_fracciones
+            if linea.contenido_caja is not None:
+                producto.contenido_caja = linea.contenido_caja
+            if linea.contenido_blister is not None:
+                producto.contenido_blister = linea.contenido_blister
+            if linea.precio_caja is not None:
+                producto.precio_caja = linea.precio_caja
+            if linea.precio_blister is not None:
+                producto.precio_blister = linea.precio_blister
+            if linea.precio_unidad is not None:
+                producto.precio_unidad = linea.precio_unidad
+            if linea.codigo_barras:
+                producto.codigo_barras = linea.codigo_barras
+            if linea.codigo_barras_blister:
+                producto.codigo_barras_blister = linea.codigo_barras_blister
+            if linea.codigo_barras_unidad:
+                producto.codigo_barras_unidad = linea.codigo_barras_unidad
+
             mov = MovimientoInventario(
                 producto_id=producto.id,
                 tipo="ENTRADA",

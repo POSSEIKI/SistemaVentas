@@ -11,8 +11,11 @@ frontend/dist/
 frontend/.dist/
 
 # Variables de entorno y secretos sensibles
+.env
+*.env
 backend/.env
 frontend/.env.local
+frontend/.env
 
 # Logs y temporales
 *.log

@@ -1,18 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { useAuthStore } from './stores/authStore'
 import { authApi } from './api/services'
 import AppLayout from './components/layout/AppLayout'
+import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
+import SignUpPage from './pages/SignUpPage'
 import SetupPage from './pages/SetupPage'
-import VentasPage from './pages/VentasPage'
-import ComprasPage from './pages/ComprasPage'
-import InventarioPage from './pages/InventarioPage'
-import ClientesPage from './pages/ClientesPage'
-import ReportesPage from './pages/ReportesPage'
-import ParametrosPage from './pages/ParametrosPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +36,8 @@ function AppRoutes() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-dark-900 flex items-center justify-center">
-        <div className="text-primary-500 text-lg animate-pulse">Cargando...</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-emerald-400 text-lg font-semibold animate-pulse">Cargando FACTUR-AAP...</div>
       </div>
     )
   }
@@ -56,17 +52,25 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route index element={<Navigate to="/ventas" replace />} />
-        <Route path="ventas" element={<VentasPage />} />
-        <Route path="compras" element={<ComprasPage />} />
-        <Route path="inventario" element={<InventarioPage />} />
-        <Route path="clientes" element={<ClientesPage />} />
-        <Route path="reportes" element={<ReportesPage />} />
-        <Route path="parametros" element={<ParametrosPage />} />
+      {/* ─── RUTAS PÚBLICAS ─── */}
+      <Route path="/" element={token ? <Navigate to="/ventas" replace /> : <LandingPage />} />
+      <Route path="/inicio" element={<LandingPage />} />
+      <Route path="/landing" element={<LandingPage />} />
+      <Route path="/login" element={token ? <Navigate to="/ventas" replace /> : <LoginPage />} />
+      <Route path="/registro" element={token ? <Navigate to="/ventas" replace /> : <SignUpPage />} />
+
+      {/* ─── SISTEMA POS PROTEGIDO ─── */}
+      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+        <Route path="/ventas" element={null} />
+        <Route path="/compras" element={null} />
+        <Route path="/inventario" element={null} />
+        <Route path="/clientes" element={<Navigate to="/parametros?tab=clientes" replace />} />
+        <Route path="/reportes" element={null} />
+        <Route path="/parametros" element={null} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+
+      {/* ─── CUALQUIER OTRA RUTA ─── */}
+      <Route path="*" element={<Navigate to={token ? "/ventas" : "/"} replace />} />
     </Routes>
   )
 }
@@ -79,8 +83,8 @@ export default function App() {
         <Toaster
           position="top-center"
           toastOptions={{
-            style: { background: '#1e293b', color: '#fff', border: '1px solid #334155' },
-            success: { iconTheme: { primary: '#22c55e', secondary: '#fff' } },
+            style: { background: '#0f172a', color: '#fff', border: '1px solid #334155' },
+            success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
             error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
           }}
         />

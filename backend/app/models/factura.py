@@ -42,5 +42,6 @@ class FacturaDetalle(Base):
     total_linea = Column(Numeric(12, 2), nullable=False)
     presentacion = Column(String(20), default="UNIDAD")  # CAJA | BLISTER | UNIDAD | DIRECTO
     factor_multiplicador = Column(Numeric(12, 3), default=1)
+    es_encargo = Column(Boolean, default=False, nullable=False)
     factura = relationship("Factura", back_populates="lineas")
     producto = relationship("Producto", back_populates="detalle_facturas")

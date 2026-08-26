@@ -12,8 +12,11 @@
     overscroll-behavior: none;
   }
 
-  input, select, textarea {
-    @apply text-base; /* Evita zoom en iOS al enfocar inputs */
+  /* Evita que iOS Safari y Android Chrome hagan auto-zoom no deseado al tocar inputs en móvil */
+  @media screen and (max-width: 768px) {
+    input, select, textarea, .input-field {
+      font-size: 16px !important;
+    }
   }
 }
 

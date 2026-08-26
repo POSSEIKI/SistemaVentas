@@ -1,4 +1,5 @@
-﻿import io
+import io
+import re
 import math
 import unicodedata
 from decimal import Decimal
@@ -427,4 +428,1102 @@ async def procesar_ajuste_inventario_fisico(
         "faltantes": faltantes_count,
         "impacto_total_costo": float(impacto_total_costo),
         "desfases": desfases_detalle,
+    }
+
+
+async def analizar_factura_compra_excel(
+    file_bytes: bytes,
+    filename: str,
+    db: AsyncSession,
+) -> Dict[str, Any]:
+    import csv
+    import json
+    import re
+    import html
+    import xml.etree.ElementTree as ET
+
+    # 1. Configuración de rubro, margen predeterminado y modo de redondeo
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    cfg = res_cfg.scalar_one_or_none()
+    rubro = (cfg.rubro if cfg and cfg.rubro else "FARMACIA").upper()
+    margen_def = float(getattr(cfg, "margen_ganancia_predeterminado", 30.0) or 30.0)
+    modo_redondeo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
+
+    def _redondear_precio(val: float, modo: str = "CENTENA_100") -> float:
+        if val <= 0:
+            return 0.0
+        if modo == "ENTERO":
+            return float(round(val))
+        elif modo == "CINCUENTA_50":
+            return float(round(val / 50.0) * 50)
+        elif modo == "CENTENA_100":
+            return float(round(val / 100.0) * 100)
+        elif modo == "MIL_1000":
+            return float(round(val / 1000.0) * 1000)
+        elif modo == "DECIMALES_2":
+            return round(val, 2)
+        else:
+            return float(round(val / 100.0) * 100)
+
+    # 2. Cargar todos los productos para cruce rápido
+    res_prods = await db.execute(
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(Producto.activo == True)
+    )
+    productos = res_prods.scalars().unique().all()
+
+    prods_by_id = {p.id: p for p in productos}
+    prods_by_codigo = {_normalizar(p.codigo): p for p in productos if p.codigo}
+    prods_by_barcode = {}
+    for p in productos:
+        if p.codigo_barras:
+            prods_by_barcode[_normalizar(p.codigo_barras)] = p
+        if p.codigo_barras_blister:
+            prods_by_barcode[_normalizar(p.codigo_barras_blister)] = p
+        if p.codigo_barras_unidad:
+            prods_by_barcode[_normalizar(p.codigo_barras_unidad)] = p
+    prods_by_nombre = {_normalizar(p.nombre): p for p in productos if p.nombre}
+
+    def _smart_parse_num(val, is_price=True, default=0.0):
+        if val is None:
+            return default
+        if isinstance(val, (int, float)):
+            return float(val)
+
+        s = str(val).replace("$", "").replace("COP", "").replace("cop", "").replace(" ", "").strip()
+        if not s or s.lower() == "none" or s == "-":
+            return default
+
+        negativo = s.startswith("-") or s.endswith("-")
+        s = s.replace("-", "")
+
+        # Caso 1: Ambos separadores presentes (, y .)
+        if "." in s and "," in s:
+            last_dot = s.rfind(".")
+            last_comma = s.rfind(",")
+            if last_comma > last_dot:
+                # 1.250.000,50 o 12.500,00 (punto miles, coma decimal)
+                s_clean = s[:last_comma].replace(".", "").replace(",", "") + "." + s[last_comma+1:]
+            else:
+                # 1,250,000.50 o 12,500.00 (coma miles, punto decimal)
+                s_clean = s[:last_dot].replace(",", "").replace(".", "") + "." + s[last_dot+1:]
+
+        # Caso 2: Solo contiene comas
+        elif "," in s:
+            partes = s.split(",")
+            if len(partes) > 2:
+                # 1,250,000
+                s_clean = s.replace(",", "")
+            else:
+                # 12,500 vs 12,50 vs 12,5
+                decimal_part = partes[1]
+                if len(decimal_part) == 3 and is_price and int(partes[0]) > 0:
+                    s_clean = s.replace(",", "")
+                else:
+                    s_clean = partes[0] + "." + decimal_part
+
+        # Caso 3: Solo contiene puntos
+        elif "." in s:
+            partes = s.split(".")
+            if len(partes) > 2:
+                # 1.250.000
+                s_clean = s.replace(".", "")
+            else:
+                # 12.500 vs 12.50 vs 12.5
+                decimal_part = partes[1]
+                if len(decimal_part) == 3 and is_price and int(partes[0]) > 0:
+                    s_clean = s.replace(".", "")
+                else:
+                    s_clean = s
+        else:
+            s_clean = s
+
+        try:
+            num = float(s_clean)
+            return -num if negativo else num
+        except:
+            return default
+
+    def _detectar_promocion_o_regalo(nombre: str, costo: float) -> tuple:
+        """
+        Detecta si un ítem de factura es un obsequio/bonificación sin precio (OBS)
+        o un pre-pack/combo promocional compuesto (ej. 2 DTE, PACK X 2, 2X1, COMBO, GTS).
+        Nota: 'DTE' por sí solo significa Desodorante y NO es un combo; solo es combo si inicia con número (ej: '2 DTE').
+        Retorna (es_obsequio_probable, es_combo_probable, factor_combo_sugerido).
+        """
+        nom_upper = (nombre or "").upper().strip()
+        
+        # 1. Detección de obsequio / bonificación (OBS, BONIF, MUESTRA o costo <= 0)
+        # ESTRICTAMENTE RESTRICTIVO / OBLIGATORIO DE CONVERTIR
+        es_obs = False
+        if costo <= 0:
+            es_obs = True
+        elif re.search(r"\b(OBS\.?|OBSEQUIO|BONIF\.?|MUESTRA)\b", nom_upper) or nom_upper.startswith("OBS "):
+            es_obs = True
+            
+        # 2. Detección de combo / pre-pack promocional (OPCIONAL DE DESCOMPONER)
+        es_comb = False
+        factor_sug = 1
+        
+        # Pre-packs con número antes de DTE (ej: "2 DTE.AXE...", "3 DTE...", "2DTE")
+        match_dte = re.search(r"\b(\d+)\s*DTE\b", nom_upper)
+        if match_dte:
+            try:
+                cant = int(match_dte.group(1))
+                if cant >= 2:
+                    es_comb = True
+                    factor_sug = cant
+            except:
+                pass
+            
+        # Buscar "PACK X 2", "PACK X 3", "PACKX2"
+        match_pack = re.search(r"\bPACK\s*X\s*(\d+)\b", nom_upper)
+        if match_pack:
+            try:
+                cant = int(match_pack.group(1))
+                if cant >= 2:
+                    es_comb = True
+                    factor_sug = cant
+            except:
+                pass
+                
+        # Buscar "2X1", "3X2", "2 X 1", "3 X 2"
+        if not es_comb:
+            match_nxm = re.search(r"\b(\d+)\s*X\s*(\d+)\b", nom_upper)
+            if match_nxm:
+                try:
+                    c1 = int(match_nxm.group(1))
+                    if c1 >= 2:
+                        es_comb = True
+                        factor_sug = c1
+                except:
+                    pass
+
+        # Buscar "DUO PACK", "TRIO PACK", "DUOPACK", "TRIOPACK", "COMBO", "GTS"
+        if not es_comb:
+            if re.search(r"\b(DUO\s*PACK|DUOPACK)\b", nom_upper):
+                es_comb = True
+                factor_sug = 2
+            elif re.search(r"\b(TRIO\s*PACK|TRIOPACK)\b", nom_upper):
+                es_comb = True
+                factor_sug = 3
+            elif re.search(r"\bCOMBO\b", nom_upper) and not es_obs:
+                es_comb = True
+                factor_sug = 2
+            elif re.search(r"\b(\d+)\s*UND\s*GTS\b", nom_upper) or re.search(r"\b\+\s*1\s*GTS\b", nom_upper) or re.search(r"\bGRATIS\b", nom_upper):
+                es_comb = True
+                factor_sug = 2
+            
+        return es_obs, es_comb, max(1, factor_sug)
+
+    def _parse_pharma_description(desc: str) -> dict:
+        if not desc:
+            return {"nombre": "", "lote": None, "vencimiento": None, "contenido_caja": 1}
+        s = str(desc).strip()
+        s = re.sub(r'(\d{4}[-/.]\d{1,2}[-/.])\s+(\d{1,2})', r'\1\2', s)
+        match_fecha = re.search(r'\b(20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]20\d{2})\b', s)
+        vencimiento = None
+        lote = None
+        nombre_limpio = s
+
+        if match_fecha:
+            vencimiento = match_fecha.group(1)
+            resto = s[:match_fecha.start()].strip()
+            tokens = resto.split()
+            if tokens:
+                posible_lote = tokens[-1]
+                if len(posible_lote) >= 3 and any(c.isdigit() for c in posible_lote):
+                    lote = posible_lote
+                    nombre_limpio = " ".join(tokens[:-1])
+                else:
+                    nombre_limpio = resto
+
+        contenido_caja = 1
+        match_cant = re.search(r'\bX\s*(\d+)\s*(TAB|CAP|COMP|BLIST|SOB|UND)\b', nombre_limpio, re.IGNORECASE)
+        if match_cant:
+            try:
+                contenido_caja = int(match_cant.group(1))
+            except:
+                pass
+
+        return {
+            "nombre": nombre_limpio.strip(),
+            "lote": lote,
+            "vencimiento": vencimiento,
+            "contenido_caja": contenido_caja
+        }
+
+    # 3. Detectar formato del archivo
+    fname_lower = filename.lower()
+    filas_raw = []
+    numero_factura_detectado = None
+    proveedor_detectado = None
+    fecha_factura_detectada = None
+    formato_detectado = "DESCONOCIDO"
+
+    # A. PDF (Facturas de Medicamentos / DIAN / LOINPRO / Copservir / Audifarma / Dromayor / Distribuidoras)
+    es_pdf = fname_lower.endswith(".pdf") or file_bytes.strip().startswith(b"%PDF")
+    if es_pdf:
+        formato_detectado = "PDF_FACTURA_MEDICAMENTOS"
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                texto_completo = ""
+                for page in pdf.pages:
+                    t = page.extract_text() or ""
+                    texto_completo += t + "\n"
+
+                lineas_pdf = [l.strip() for l in texto_completo.splitlines() if l.strip()]
+
+                # 1. Metadatos de Cabecera
+                for l in lineas_pdf[:35]:
+                    l_str = l.strip()
+                    if not proveedor_detectado and any(term in l_str.upper() for term in ["S.A.S", "S.A.", "LTDA", "COOPIDROGAS", "DISTRIBUIDORA", "DROGUERIA", "LABORATORIO", "LOINPRO", "AUDIFARMA", "DROMAYOR", "ETICOS"]):
+                        proveedor_detectado = l_str
+
+                    m_num = re.search(r'\b(?:Numero|Número|Factura\s*(?:N[°o]|Electr[oó]nica\s*de\s*Venta)?)\s*[:.]?\s*([A-Za-z0-9\s\-]{3,25})', l_str, re.IGNORECASE)
+                    if m_num and not numero_factura_detectado:
+                        pos = m_num.group(1).strip()
+                        if any(c.isdigit() for c in pos) and not "ELECTR" in pos.upper():
+                            numero_factura_detectado = pos
+
+                    m_fec = re.search(r'Fecha\s*(?:Generaci[oó]n|Expedici[oó]n|Factura)?\s*[:.]?\s*(\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})', l_str, re.IGNORECASE)
+                    if m_fec and not fecha_factura_detectada:
+                        raw_f = m_fec.group(1)
+                        m_f_iso = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$", raw_f)
+                        if m_f_iso:
+                            fecha_factura_detectada = f"{m_f_iso.group(1)}-{int(m_f_iso.group(2)):02d}-{int(m_f_iso.group(3)):02d}"
+                        else:
+                            m_f_lat = re.match(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$", raw_f)
+                            if m_f_lat:
+                                fecha_factura_detectada = f"{m_f_lat.group(3)}-{int(m_f_lat.group(2)):02d}-{int(m_f_lat.group(1)):02d}"
+
+                # 2. Localizar bloque de items
+                idx_inicio = -1
+                for i, l in enumerate(lineas_pdf):
+                    l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
+                    if "ITEM" in l_norm and ("DIGO" in l_norm or "REF" in l_norm or "DESCRIP" in l_norm or "CANT" in l_norm):
+                        idx_inicio = i + 1
+                        break
+
+                bloque_items = []
+                if idx_inicio != -1:
+                    i = idx_inicio
+                    while i < len(lineas_pdf):
+                        l = lineas_pdf[i]
+                        l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
+                        if any(term in l_norm for term in ["TOTAL NRO. ITEMS", "TOTAL NRO ITEMS", "OBSERVACIONES", "SUBTOTAL", "VALOR EN LETRAS", "SON:", "TOTAL FACTURA", "CUFE"]):
+                            break
+                        bloque_items.append(l)
+                        i += 1
+                else:
+                    bloque_items = lineas_pdf
+
+                # 3. Unificar renglones multilínea
+                patron_con_item = re.compile(r'^(\d{1,4})\s+([A-Za-z0-9\-]{4,25})\s+(.*)$')
+                patron_con_codigo_alfa = re.compile(r'^([A-Za-z]+[0-9]+[A-Za-z0-9\-]*|[0-9]+[A-Za-z]+[A-Za-z0-9\-]*)\s+(.*)$')
+
+                items_unificados = []
+                item_actual = None
+                ultimo_item_num = 0
+
+                for l in bloque_items:
+                    m1 = patron_con_item.match(l)
+                    es_nuevo = False
+                    cod = ""
+                    resto = ""
+
+                    if m1:
+                        num = int(m1.group(1))
+                        if num == ultimo_item_num + 1 or (ultimo_item_num == 0 and num in [1, 2]):
+                            es_nuevo = True
+                            ultimo_item_num = num
+                            cod = m1.group(2)
+                            resto = m1.group(3)
+                    elif not es_nuevo:
+                        m2 = patron_con_codigo_alfa.match(l)
+                        if m2 and any(k in l for k in ["CA", "NIU", "VI", "UND", "TAB", "CAP", "0,00", "1,00", "0.00"]):
+                            es_nuevo = True
+                            cod = m2.group(1)
+                            resto = m2.group(2)
+
+                    if es_nuevo:
+                        if item_actual:
+                            items_unificados.append(item_actual)
+                        item_actual = {
+                            "codigo": cod,
+                            "resto": resto,
+                            "lineas_extra": []
+                        }
+                    else:
+                        if item_actual:
+                            item_actual["lineas_extra"].append(l)
+
+                if item_actual:
+                    items_unificados.append(item_actual)
+
+                patron_numeros_finales = re.compile(
+                    r'^(?P<desc_y_lote>.*?)\s+'
+                    r'(?:(?P<umedida>[A-Za-z]{2,5})\s+)?'
+                    r'(?:(?P<iva>\d+(?:[.,]\d+)?)\s+)?'
+                    r'(?P<cant>\d+(?:[.,]\d+)?)\s+'
+                    r'(?P<vr_unit>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)\s+'
+                    r'(?:(?P<dcto>\d+(?:[.,]\d+)?)\s+)?'
+                    r'(?P<vr_total>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)$'
+                )
+
+                filas_extraidas = []
+                for it in items_unificados:
+                    codigo = it["codigo"]
+                    resto = it["resto"]
+                    extras = " ".join(it["lineas_extra"]).strip()
+
+                    m_num = patron_numeros_finales.search(resto)
+                    if m_num:
+                        g = m_num.groupdict()
+                        desc_y_lote = g["desc_y_lote"].strip()
+                        if extras:
+                            desc_y_lote = desc_y_lote + " " + extras
+
+                        cant = _smart_parse_num(g["cant"], is_price=False, default=1.0)
+                        vr_u = _smart_parse_num(g["vr_unit"], is_price=True, default=0.0)
+                        dcto = _smart_parse_num(g.get("dcto"), is_price=False, default=0.0)
+                        iva = _smart_parse_num(g.get("iva"), is_price=False, default=0.0)
+                        vr_tot = _smart_parse_num(g["vr_total"], is_price=True, default=0.0)
+
+                        p_desc = _parse_pharma_description(desc_y_lote)
+                        nom_limpio = p_desc["nombre"]
+                        lote = p_desc["lote"]
+                        venc = p_desc["vencimiento"]
+                        cnt_caja = p_desc["contenido_caja"]
+
+                        if vr_tot > 0 and cant > 0:
+                            costo_neto = round(vr_tot / cant, 2)
+                        elif vr_u > 0:
+                            costo_neto = round(vr_u * (1.0 - dcto / 100.0), 2)
+                        else:
+                            costo_neto = 0.0
+
+                        filas_extraidas.append([
+                            codigo,
+                            "",
+                            nom_limpio,
+                            cant,
+                            costo_neto,
+                            iva,
+                            0,
+                            lote,
+                            venc,
+                            cnt_caja
+                        ])
+
+                print(f"[DEBUG PDF] items_unificados={len(items_unificados)}, filas_extraidas={len(filas_extraidas)}")
+                if filas_extraidas:
+                    filas_raw = [["codigo", "codigo_barras", "nombre", "cantidad", "costo_unitario", "iva_porcentaje", "precio_sugerido", "lote", "vencimiento", "contenido_caja"]] + filas_extraidas
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            filas_raw = []
+
+    # B. XML (DIAN Factura Electrónica UBL 2.1 / AttachedDocument)
+    elif es_xml:
+        formato_detectado = "XML_DIAN"
+        try:
+            texto = file_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            texto = file_bytes.decode("latin1", errors="ignore")
+
+        if "<AttachedDocument" in texto and "&lt;Invoice" in texto:
+            import html
+            sub_xml = html.unescape(texto)
+            idx_inv = sub_xml.find("<Invoice")
+            if idx_inv != -1:
+                end_inv = sub_xml.find("</Invoice>") + len("</Invoice>")
+                texto = sub_xml[idx_inv:end_inv]
+
+        try:
+            # Limpiar namespaces para búsqueda universal
+            clean_xml = re.sub(r'\sxmlns(:\w+)?="[^"]+"', '', texto)
+            clean_xml = re.sub(r'<(/?)\w+:', r'<\1', clean_xml)
+            root = ET.fromstring(clean_xml)
+
+            for elem in root.iter():
+                t = elem.tag.lower()
+                val = (elem.text or "").strip()
+                if not val:
+                    continue
+                if t in ["id", "invoicenumber", "consecutivo"] and not numero_factura_detectado:
+                    numero_factura_detectado = val
+                elif t in ["name", "registrationname", "razonsocial"] and not proveedor_detectado:
+                    proveedor_detectado = val
+
+            filas_raw = [["codigo", "codigo_barras", "nombre", "cantidad", "costo_unitario", "iva_porcentaje", "precio_sugerido"]]
+            for l in root.iter():
+                if l.tag.lower() in ["invoiceline", "creditnoteline", "lineafactura", "detalle"]:
+                    desc = ""
+                    cant = 1.0
+                    price = 0.0
+                    iva = 0.0
+                    code = ""
+                    for elem in l.iter():
+                        t = elem.tag.lower()
+                        val = (elem.text or "").strip()
+                        if not val:
+                            continue
+                        if t in ["description", "itemname", "productname"] and not desc:
+                            desc = val
+                        elif t == "name" and not desc:
+                            desc = val
+                        elif t in ["invoicedquantity", "quantity", "cantidad", "cant"]:
+                            cant = _smart_parse_num(val, is_price=False, default=1.0)
+                        elif t in ["priceamount", "price", "unitprice", "valorunitario", "preciocosto", "costo"]:
+                            price = _smart_parse_num(val, is_price=True, default=0.0)
+                        elif t in ["percent", "porcentaje", "iva", "taxpercent"]:
+                            iva = _smart_parse_num(val, is_price=False, default=0.0)
+                        elif t in ["id", "barcode", "ean", "ean13", "upc", "sku", "code"]:
+                            if len(val) >= 8 or not code:
+                                code = val
+
+                    if desc or code:
+                        filas_raw.append([code, code if len(code) >= 8 else "", desc or code, cant, price, iva, 0])
+        except Exception:
+            filas_raw = []
+
+    # B. JSON
+    elif fname_lower.endswith(".json") or file_bytes.strip().startswith(b"{") or file_bytes.strip().startswith(b"["):
+        formato_detectado = "JSON"
+        try:
+            data = json.loads(file_bytes.decode("utf-8", errors="ignore"))
+            items_list = data if isinstance(data, list) else data.get("lineas") or data.get("items") or data.get("productos") or []
+            if isinstance(data, dict):
+                numero_factura_detectado = data.get("numero_factura") or data.get("factura") or data.get("numero")
+                proveedor_detectado = data.get("proveedor")
+            filas_raw = [["codigo", "codigo_barras", "nombre", "cantidad", "costo_unitario", "iva_porcentaje", "precio_sugerido"]]
+            for it in items_list:
+                filas_raw.append([
+                    it.get("codigo", ""),
+                    it.get("codigo_barras") or it.get("ean", ""),
+                    it.get("nombre") or it.get("descripcion", ""),
+                    it.get("cantidad", 1),
+                    it.get("costo_unitario") or it.get("costo", 0),
+                    it.get("iva_porcentaje") or it.get("iva", 0),
+                    it.get("precio_sugerido") or it.get("precio_venta", 0),
+                ])
+        except Exception:
+            filas_raw = []
+
+    # C. Excel (.xlsx, .xls)
+    elif fname_lower.endswith((".xlsx", ".xls", ".xlsm")):
+        formato_detectado = "EXCEL"
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                if any(cell is not None and str(cell).strip() != "" for cell in row):
+                    filas_raw.append(list(row))
+        except Exception:
+            filas_raw = []
+
+    # D. Texto plano / Coopidrogas .DAT / .TXT / .CSV / .PRN / .TSV
+    else:
+        formato_detectado = "COOPIDROGAS_DAT_TEXT" if fname_lower.endswith(".dat") else "TEXTO_DELIMITADO"
+        try:
+            texto = file_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                texto = file_bytes.decode("latin1", errors="ignore")
+            except:
+                texto = file_bytes.decode("cp1252", errors="ignore")
+
+        lineas_texto = [l.strip() for l in texto.splitlines() if l.strip()]
+
+        # Buscar encabezados de factura tipo Coopidrogas (F|... o H|...)
+        for l in lineas_texto[:5]:
+            if l.startswith(("F|", "H|", "FAC|")) or "COOPIDROGAS" in l.upper():
+                partes = l.split("|") if "|" in l else l.split(";")
+                for p in partes:
+                    p_limpio = p.strip()
+                    if re.match(r"^[A-Z0-9\-]{4,20}$", p_limpio) and any(c.isdigit() for c in p_limpio):
+                        if not numero_factura_detectado:
+                            numero_factura_detectado = p_limpio
+                    if "COOPIDROGAS" in p_limpio.upper() or "DISTRIBUIDORA" in p_limpio.upper():
+                        proveedor_detectado = p_limpio
+
+        # Sniff delimiter
+        posibles_delims = ["|", ";", "\t", ","]
+        conteos = {d: sum(l.count(d) for l in lineas_texto[:15]) for d in posibles_delims}
+        mejor_delim = max(conteos, key=conteos.get)
+
+        if conteos[mejor_delim] > 0:
+            for l in lineas_texto:
+                # Si la línea empieza por D| (detalle Coopidrogas), remover prefijo
+                l_procesar = l
+                if l.startswith("D|") and mejor_delim == "|":
+                    l_procesar = l[2:]
+                elif l.startswith(("F|", "H|", "T|", "TOTAL|")):
+                    continue # Saltar líneas de cabecera/totales
+
+                fila_partes = [c.strip() for c in l_procesar.split(mejor_delim)]
+                if any(c != "" for c in fila_partes):
+                    filas_raw.append(fila_partes)
+        else:
+            # Líneas sin delimitador común (posicionales)
+            for l in lineas_texto:
+                tokens = [t.strip() for t in re.split(r"\s{2,}", l) if t.strip()]
+                if len(tokens) >= 2:
+                    filas_raw.append(tokens)
+
+    if not filas_raw:
+        return {
+            "total_filas": 0,
+            "encontrados": 0,
+            "nuevos": 0,
+            "margen_predeterminado": margen_def,
+            "rubro": rubro,
+            "formato_detectado": formato_detectado,
+            "numero_factura_detectado": numero_factura_detectado,
+            "proveedor_detectado": proveedor_detectado,
+            "escala_precios_detectada": 1,
+            "items": [],
+        }
+
+    # 3.1 Detección del Formato Oficial de Coopidrogas (18-25 columnas con Col 1=Cod Drogueria, Col 5=Nombre, Col 11=Barras, Col 7=Costo Descuento, Col 19=Total)
+    es_coopidrogas_oficial = False
+    for f in filas_raw[:10]:
+        if len(f) >= 11:
+            nom_c = str(f[4]).strip() if len(f) > 4 else ""
+            bar_c = str(f[10]).strip() if len(f) > 10 else ""
+            if len(nom_c) >= 3 and any(c.isalpha() for c in nom_c) and (len(bar_c) >= 8 or re.match(r"^\d{8,14}$", bar_c)):
+                es_coopidrogas_oficial = True
+                break
+
+    if es_coopidrogas_oficial:
+        formato_detectado = "COOPIDROGAS_DAT_OFICIAL"
+        proveedor_detectado = "COOPIDROGAS"
+        fecha_factura_detectada = None
+        items = []
+
+        for idx, f in enumerate(filas_raw):
+            if len(f) < 5:
+                continue
+
+            cod_drogueria = str(f[0]).strip()
+
+            # Columna 2 (f[1]): Fecha del pedido (formato AAAA-MM-DD o variantes)
+            col_fecha = str(f[1]).strip() if len(f) > 1 else ""
+            if col_fecha and not fecha_factura_detectada:
+                m_f = re.match(r"^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})$", col_fecha)
+                if m_f:
+                    fecha_factura_detectada = f"{m_f.group(1)}-{m_f.group(2)}-{m_f.group(3)}"
+                else:
+                    m_f_inv = re.match(r"^(\d{2})[-/.](\d{2})[-/.](\d{4})$", col_fecha)
+                    if m_f_inv:
+                        fecha_factura_detectada = f"{m_f_inv.group(3)}-{m_f_inv.group(2)}-{m_f_inv.group(1)}"
+                    elif len(col_fecha) >= 8 and any(c.isdigit() for c in col_fecha):
+                        fecha_factura_detectada = col_fecha
+
+            # Columna 3 (f[2]): Número de factura o pedido
+            col_factura_pedido = str(f[2]).strip() if len(f) > 2 else ""
+            if col_factura_pedido and not numero_factura_detectado and col_factura_pedido != "0":
+                numero_factura_detectado = col_factura_pedido
+
+            # Columna 4 (f[3]): Código del producto oficial
+            cod_prod = str(f[3]).strip() if len(f) > 3 else ""
+
+            # Columna 5 (f[4]): Descripción / Nombre del producto
+            nombre_raw = str(f[4]).strip() if len(f) > 4 else ""
+            if not nombre_raw:
+                continue
+
+            # Columna 6 (f[5]): Cantidad
+            cantidad = max(1.0, _smart_parse_num(f[5], is_price=False, default=1.0) if len(f) > 5 else 1.0)
+            # Columna 7 (f[6]): Costo descuento
+            costo_desc = _smart_parse_num(f[6], is_price=True, default=0.0) if len(f) > 6 else 0.0
+            # Columna 8 (f[7]): Costo real
+            costo_real = _smart_parse_num(f[7], is_price=True, default=0.0) if len(f) > 7 else 0.0
+            # Columna 11 (f[10]): Código de barras EAN
+            barras_raw = str(f[10]).strip() if len(f) > 10 else ""
+            # Columna 19 (f[18]): Total pagar
+            total_pagar = _smart_parse_num(f[18], is_price=True, default=0.0) if len(f) > 18 else 0.0
+
+            # Calcular costo unitario exacto considerando descuento y validación contra total
+            costo_final = 0.0
+            if cantidad > 0 and total_pagar > 0:
+                costo_calc = total_pagar / cantidad
+                if costo_desc > 0:
+                    ratio = costo_desc / costo_calc
+                    if 80 <= ratio <= 120:
+                        costo_final = round(costo_calc, 2)
+                    elif abs(costo_desc - costo_calc) < 1.0:
+                        costo_final = round(costo_desc, 2)
+                    else:
+                        costo_final = round(costo_desc, 2)
+                else:
+                    costo_final = round(costo_calc, 2)
+            elif costo_desc > 0:
+                costo_final = round(costo_desc, 2)
+            else:
+                costo_final = round(costo_real, 2)
+
+            es_obs, es_comb, factor_sug = _detectar_promocion_o_regalo(nombre_raw, costo_final)
+
+            # Cruce con BD
+            prod_encontrado: Optional[Producto] = None
+            if barras_raw and _normalizar(barras_raw) in prods_by_barcode:
+                prod_encontrado = prods_by_barcode[_normalizar(barras_raw)]
+            elif cod_prod and _normalizar(cod_prod) in prods_by_codigo:
+                prod_encontrado = prods_by_codigo[_normalizar(cod_prod)]
+            elif nombre_raw and _normalizar(nombre_raw) in prods_by_nombre:
+                prod_encontrado = prods_by_nombre[_normalizar(nombre_raw)]
+
+            if prod_encontrado:
+                p = prod_encontrado
+                c_unit = costo_final if costo_final > 0 else float(p.precio_costo or 0)
+                precio_sug = float(p.precio_venta or 0)
+                if precio_sug <= 0 and c_unit > 0:
+                    precio_sug = _redondear_precio(c_unit * (1 + margen_def / 100), modo_redondeo)
+                ganancia = precio_sug - c_unit
+                margen_pct = round((ganancia / c_unit) * 100, 2) if c_unit > 0 else margen_def
+
+                items.append({
+                    "index": idx,
+                    "estado": "ENCONTRADO",
+                    "producto_id": p.id,
+                    "codigo": p.codigo,
+                    "codigo_barras": p.codigo_barras or barras_raw or "",
+                    "codigo_barras_blister": p.codigo_barras_blister or "",
+                    "codigo_barras_unidad": p.codigo_barras_unidad or "",
+                    "nombre": p.nombre,
+                    "nombre_original": nombre_raw,
+                    "principio_activo": p.principio_activo or "",
+                    "laboratorio": p.laboratorio or "COOPIDROGAS",
+                    "cantidad": cantidad,
+                    "costo_unitario": c_unit,
+                    "iva_porcentaje": float(p.iva_porcentaje or 0),
+                    "precio_sugerido": precio_sug,
+                    "porcentaje_ganancia": margen_pct,
+                    "stock_actual_bd": float(p.stock_actual or 0),
+                    "maneja_fracciones": p.maneja_fracciones,
+                    "contenido_caja": p.contenido_caja or 1,
+                    "contenido_blister": p.contenido_blister or 0,
+                    "precio_caja": _redondear_precio(float(p.precio_caja or precio_sug), modo_redondeo),
+                    "precio_blister": _redondear_precio(float(p.precio_blister or 0), modo_redondeo) if (float(p.precio_blister or 0) > 0) else 0.0,
+                    "precio_unidad": _redondear_precio(float(p.precio_unidad or 0), modo_redondeo) if (float(p.precio_unidad or 0) > 0) else 0.0,
+                    "es_obsequio_probable": es_obs,
+                    "es_combo_probable": es_comb,
+                    "factor_combo_sugerido": factor_sug,
+                })
+            else:
+                precio_sug = _redondear_precio(costo_final * (1 + margen_def / 100), modo_redondeo)
+                ganancia = precio_sug - costo_final
+                margen_pct = round((ganancia / costo_final) * 100, 2) if costo_final > 0 else margen_def
+
+                # Detección inteligente de unidades en el nombre (ej. 12 UND, X 100)
+                m_qty = re.search(r'(?:X|\b)(\d+)\s*(?:UND|UNID|TAB|CAP|SOB|AMP|PZ)\b', nombre_raw, re.IGNORECASE)
+                cnt_caja = int(m_qty.group(1)) if m_qty else 1
+                p_caja_nuevo = precio_sug
+                p_unidad_nuevo = _redondear_precio((p_caja_nuevo / cnt_caja) * 1.25, modo_redondeo) if cnt_caja > 1 else 0.0
+
+                items.append({
+                    "index": idx,
+                    "estado": "NUEVO",
+                    "producto_id": None,
+                    "codigo": cod_prod or f"PROD-{idx + 1:04d}",
+                    "codigo_barras": barras_raw,
+                    "codigo_barras_blister": "",
+                    "codigo_barras_unidad": "",
+                    "nombre": nombre_raw,
+                    "nombre_original": nombre_raw,
+                    "principio_activo": "",
+                    "laboratorio": "COOPIDROGAS",
+                    "cantidad": cantidad,
+                    "costo_unitario": costo_final,
+                    "iva_porcentaje": 0,
+                    "precio_sugerido": precio_sug,
+                    "porcentaje_ganancia": margen_pct,
+                    "stock_actual_bd": 0,
+                    "maneja_fracciones": True if (rubro == "FARMACIA" or cnt_caja > 1) else False,
+                    "contenido_caja": cnt_caja,
+                    "contenido_blister": 0,
+                    "precio_caja": p_caja_nuevo,
+                    "precio_blister": 0.0,
+                    "precio_unidad": p_unidad_nuevo,
+                    "es_obsequio_probable": es_obs,
+                    "es_combo_probable": es_comb,
+                    "factor_combo_sugerido": factor_sug,
+                })
+
+        # Verificación de si la factura de Coopidrogas ya fue ingresada previamente
+        factura_ya_registrada = False
+        compra_previa_info = None
+        if numero_factura_detectado:
+            from app.models.inventario import Compra
+            stmt_c = (
+                select(Compra)
+                .options(joinedload(Compra.proveedor), joinedload(Compra.lineas))
+                .where(Compra.numero_factura_proveedor == numero_factura_detectado)
+            )
+            res_c = await db.execute(stmt_c)
+            c_prev = res_c.scalars().unique().first()
+            if c_prev:
+                factura_ya_registrada = True
+                compra_previa_info = {
+                    "id": c_prev.id,
+                    "numero": c_prev.numero,
+                    "numero_factura_proveedor": c_prev.numero_factura_proveedor,
+                    "fecha": c_prev.fecha.isoformat() if c_prev.fecha else None,
+                    "total": float(c_prev.total or 0),
+                    "proveedor_nombre": c_prev.proveedor.razon_social if c_prev.proveedor else "Coopidrogas",
+                    "total_items": len(c_prev.lineas),
+                }
+
+        return {
+            "total_filas": len(items),
+            "encontrados": sum(1 for x in items if x["estado"] == "ENCONTRADO"),
+            "nuevos": sum(1 for x in items if x["estado"] == "NUEVO"),
+            "margen_predeterminado": margen_def,
+            "rubro": rubro,
+            "modo_redondeo": modo_redondeo,
+            "formato_detectado": formato_detectado,
+            "numero_factura_detectado": numero_factura_detectado,
+            "proveedor_detectado": proveedor_detectado,
+            "fecha_detectada": fecha_factura_detectada,
+            "escala_precios_detectada": 1,
+            "factura_ya_registrada": factura_ya_registrada,
+            "compra_previa": compra_previa_info,
+            "items": items,
+        }
+
+    # 4. Diccionario ampliado de sinónimos (incluyendo terminología Coopidrogas, Audifarma, AXON, DIAN)
+    sinonimos = {
+        "codigo_barras": [
+            "codigo_barras", "cod_barras", "ean", "barcode", "barras", "upc", "gtin",
+            "cod_barras_caja", "codigo_de_barras", "codigo barras", "c_barras", "ean13",
+            "codbarras", "c_ean", "plu", "barcode_caja", "cbarras"
+        ],
+        "codigo_barras_blister": ["cod_barras_blister", "codigo_barras_blister", "barcode_blister", "ean_blister"],
+        "codigo_barras_unidad": ["cod_barras_unidad", "codigo_barras_unidad", "barcode_unidad", "ean_unidad"],
+        "codigo": [
+            "codigo", "cod", "ref", "referencia", "sku", "codigo_articulo", "item", "codigo_producto",
+            "cod_articulo", "cod_art", "cod_coopidrogas", "cod_cop", "cod_prov", "cod_distribuidor"
+        ],
+        "nombre": [
+            "nombre", "descripcion", "producto", "articulo", "detalle", "descripcion_articulo", "nombre_producto",
+            "desc_articulo", "nom_articulo", "item_description", "concepto", "descripcion_producto"
+        ],
+        "cantidad": [
+            "cantidad", "cant", "unidades", "qty", "cajas", "bultos", "cant_comprada", "cant_facturada",
+            "cant_enviada", "cant_despachada", "unid_facturadas", "cant_pedida"
+        ],
+        "costo_unitario": [
+            "costo", "costo_unitario", "precio_costo", "costo_unit", "p_costo", "vlr_unitario", "vr_unit",
+            "valor_unitario", "precio_compra", "costo_neto", "vr_neto_unit", "precio_unitario", "costo_unitario_neto"
+        ],
+        "iva_porcentaje": ["iva", "iva_porcentaje", "pct_iva", "tarifa_iva", "porcentaje_iva", "%iva", "tarifa"],
+        "precio_sugerido": [
+            "precio_venta", "precio_sugerido", "pvp", "p_venta", "precio_publico", "venta", "p_publico",
+            "pvp_sugerido", "vr_publico", "precio_sugerido_venta"
+        ],
+        "principio_activo": ["principio_activo", "sustancia", "generico", "molecula", "droga", "droga_generica"],
+        "laboratorio": ["laboratorio", "marca", "fabricante", "proveedor_marca", "lab", "casa_comercial"],
+        "lote": ["lote", "batch", "lot", "nro_lote", "num_lote", "no_lote"],
+        "vencimiento": ["vencimiento", "vence", "fecha_vencimiento", "fecha_venc", "f_vto", "f_venc", "exp", "expiry", "vto"],
+        "contenido_caja": ["contenido_caja", "fraccion", "unidades_caja", "cant_caja", "contenido", "unidades por caja", "unid_caja"],
+        "contenido_blister": ["contenido_blister", "unidades_blister", "blister_caja", "unidades por blister", "unid_blister"],
+        "precio_caja": ["precio_caja", "pvp_caja"],
+        "precio_blister": ["precio_blister", "pvp_blister"],
+        "precio_unidad": ["precio_unidad", "pvp_unidad"],
+    }
+
+    mejor_idx_header = 0
+    max_coincidencias = 0
+    mapa_cols = {}
+
+    for r_idx in range(min(12, len(filas_raw))):
+        fila = filas_raw[r_idx]
+        temp_map = {}
+        matches = 0
+        for c_idx, cell in enumerate(fila):
+            val_norm = _normalizar(cell)
+            if not val_norm:
+                continue
+            for col_estandar, lista_sin in sinonimos.items():
+                if col_estandar not in temp_map:
+                    if any(sin in val_norm for sin in lista_sin):
+                        temp_map[col_estandar] = c_idx
+                        matches += 1
+                        break
+        if matches > max_coincidencias:
+            max_coincidencias = matches
+            mejor_idx_header = r_idx
+            mapa_cols = temp_map
+
+    # Si no se detectó cabecera clara (ej: archivo Coopidrogas .DAT posicional directo)
+    tiene_cabecera_clara = max_coincidencias >= 2
+    filas_datos = filas_raw[mejor_idx_header + 1:] if tiene_cabecera_clara else filas_raw
+
+    # Heurística posicional especializada para Coopidrogas cuando no hay encabezados
+    if not tiene_cabecera_clara and filas_datos:
+        primera_fila = filas_datos[0]
+        n_cols = len(primera_fila)
+        mapa_cols = {}
+
+        # Coopidrogas estándar: [EAN, COD_INT, NOMBRE, LAB, CANT, BONIF, COSTO, IVA, PVP, SUSTANCIA, ...]
+        if n_cols >= 7 and re.match(r"^\d{12,14}$", str(primera_fila[0]).strip()):
+            mapa_cols["codigo_barras"] = 0
+            mapa_cols["codigo"] = 1
+            mapa_cols["nombre"] = 2
+            c3 = str(primera_fila[3]).strip()
+            if any(c.isalpha() for c in c3):
+                mapa_cols["laboratorio"] = 3
+                mapa_cols["cantidad"] = 4
+                mapa_cols["costo_unitario"] = 6 if n_cols > 6 else 5
+                if n_cols > 7:
+                    mapa_cols["iva_porcentaje"] = 7
+                if n_cols > 8:
+                    mapa_cols["precio_sugerido"] = 8
+                if n_cols > 9 and any(c.isalpha() for c in str(primera_fila[9])):
+                    mapa_cols["principio_activo"] = 9
+            else:
+                mapa_cols["cantidad"] = 3
+                mapa_cols["costo_unitario"] = 4
+                if n_cols > 5:
+                    mapa_cols["iva_porcentaje"] = 5
+                if n_cols > 6:
+                    mapa_cols["precio_sugerido"] = 6
+        else:
+            # Heurística posicional genérica
+            for c_i, val in enumerate(primera_fila):
+                s_val = str(val).strip()
+                if re.match(r"^\d{12,14}$", s_val) and "codigo_barras" not in mapa_cols:
+                    mapa_cols["codigo_barras"] = c_i
+                elif re.match(r"^[A-Za-z0-9\-]{3,8}$", s_val) and "codigo" not in mapa_cols:
+                    mapa_cols["codigo"] = c_i
+                elif len(s_val) > 8 and any(c.isalpha() for c in s_val) and "nombre" not in mapa_cols:
+                    mapa_cols["nombre"] = c_i
+
+            if "nombre" in mapa_cols:
+                restantes = [i for i in range(n_cols) if i not in mapa_cols.values()]
+                if restantes:
+                    mapa_cols["cantidad"] = restantes[0]
+                if len(restantes) > 1:
+                    mapa_cols["costo_unitario"] = restantes[1]
+                if len(restantes) > 2:
+                    mapa_cols["iva_porcentaje"] = restantes[2]
+                if len(restantes) > 3:
+                    mapa_cols["precio_sugerido"] = restantes[3]
+
+    items = []
+
+    for idx, f in enumerate(filas_datos):
+        def _get(col_name, default=None):
+            if col_name in mapa_cols:
+                col_i = mapa_cols[col_name]
+                if col_i < len(f) and f[col_i] is not None:
+                    val = str(f[col_i]).strip()
+                    if val != "" and val.lower() != "none":
+                        return val
+            return default
+
+        nombre_raw = _get("nombre", "")
+        codigo_raw = _get("codigo", "")
+        barras_raw = _get("codigo_barras", "")
+        barras_blister_raw = _get("codigo_barras_blister", "")
+        barras_unidad_raw = _get("codigo_barras_unidad", "")
+        lote_raw = _get("lote", None)
+        vencimiento_raw = _get("vencimiento", None)
+
+        # Si no hay ni nombre ni código ni barras, ignorar fila vacía
+        if not nombre_raw and not codigo_raw and not barras_raw:
+            continue
+
+        cantidad = max(1.0, _smart_parse_num(_get("cantidad", 1), is_price=False, default=1.0))
+        costo_unit = _smart_parse_num(_get("costo_unitario", 0), is_price=True, default=0.0)
+        iva_pct = _smart_parse_num(_get("iva_porcentaje", 0), is_price=False, default=0.0)
+        precio_sug_excel = _smart_parse_num(_get("precio_sugerido", None), is_price=True, default=None)
+
+        principio_activo = _get("principio_activo", "")
+        laboratorio = _get("laboratorio", "")
+        contenido_caja = int(_smart_parse_num(_get("contenido_caja", 1), is_price=False, default=1))
+        contenido_blister = int(_smart_parse_num(_get("contenido_blister", 0), is_price=False, default=0))
+        precio_caja = _smart_parse_num(_get("precio_caja", 0), is_price=True, default=0.0)
+        precio_blister = _smart_parse_num(_get("precio_blister", 0), is_price=True, default=0.0)
+        precio_unidad = _smart_parse_num(_get("precio_unidad", 0), is_price=True, default=0.0)
+
+        # 5. Cruce inteligente con BD
+        prod_encontrado: Optional[Producto] = None
+        if barras_raw and _normalizar(barras_raw) in prods_by_barcode:
+            prod_encontrado = prods_by_barcode[_normalizar(barras_raw)]
+        elif codigo_raw and _normalizar(codigo_raw) in prods_by_codigo:
+            prod_encontrado = prods_by_codigo[_normalizar(codigo_raw)]
+        elif nombre_raw and _normalizar(nombre_raw) in prods_by_nombre:
+            prod_encontrado = prods_by_nombre[_normalizar(nombre_raw)]
+
+        es_obs, es_comb, factor_sug = _detectar_promocion_o_regalo(nombre_raw, costo_unit)
+
+        if prod_encontrado:
+            p = prod_encontrado
+            costo_final = costo_unit if costo_unit > 0 else float(p.precio_costo or 0)
+            precio_final = precio_sug_excel if (precio_sug_excel and precio_sug_excel > 0) else float(p.precio_venta or 0)
+            if precio_final <= 0 and costo_final > 0:
+                precio_final = _redondear_precio(costo_final * (1 + margen_def / 100), modo_redondeo)
+
+            ganancia = precio_final - costo_final
+            margen_pct = round((ganancia / costo_final) * 100, 2) if costo_final > 0 else margen_def
+
+            items.append({
+                "index": idx,
+                "estado": "ENCONTRADO",
+                "producto_id": p.id,
+                "codigo": p.codigo,
+                "codigo_barras": p.codigo_barras or barras_raw or "",
+                "codigo_barras_blister": p.codigo_barras_blister or barras_blister_raw or "",
+                "codigo_barras_unidad": p.codigo_barras_unidad or barras_unidad_raw or "",
+                "nombre": p.nombre,
+                "nombre_original": nombre_raw,
+                "principio_activo": p.principio_activo or principio_activo or "",
+                "laboratorio": p.laboratorio or laboratorio or "",
+                "lote": lote_raw,
+                "vencimiento": vencimiento_raw,
+                "cantidad": cantidad,
+                "costo_unitario": costo_final,
+                "iva_porcentaje": iva_pct if iva_pct > 0 else float(p.iva_porcentaje or 0),
+                "precio_sugerido": precio_final,
+                "porcentaje_ganancia": margen_pct,
+                "stock_actual_bd": float(p.stock_actual or 0),
+                "maneja_fracciones": p.maneja_fracciones,
+                "contenido_caja": p.contenido_caja or contenido_caja,
+                "contenido_blister": p.contenido_blister or contenido_blister,
+                "precio_caja": _redondear_precio(float(p.precio_caja or precio_final), modo_redondeo),
+                "precio_blister": _redondear_precio(float(p.precio_blister or 0), modo_redondeo) if (float(p.precio_blister or 0) > 0) else 0.0,
+                "precio_unidad": _redondear_precio(float(p.precio_unidad or 0), modo_redondeo) if (float(p.precio_unidad or 0) > 0) else 0.0,
+                "es_obsequio_probable": es_obs,
+                "es_combo_probable": es_comb,
+                "factor_combo_sugerido": factor_sug,
+            })
+        else:
+            # Producto Nuevo
+            costo_final = costo_unit
+            precio_final = precio_sug_excel if (precio_sug_excel and precio_sug_excel > 0) else _redondear_precio(costo_final * (1 + margen_def / 100), modo_redondeo)
+            ganancia = precio_final - costo_final
+            margen_pct = round((ganancia / costo_final) * 100, 2) if costo_final > 0 else margen_def
+
+            p_caja_nuevo = precio_final
+            p_blister_nuevo = _redondear_precio(precio_blister, modo_redondeo) if precio_blister > 0 else 0.0
+            p_unidad_nuevo = _redondear_precio(precio_unidad, modo_redondeo) if precio_unidad > 0 else 0.0
+
+            if p_unidad_nuevo <= 0 and contenido_caja > 1:
+                p_unidad_nuevo = _redondear_precio((p_caja_nuevo / contenido_caja) * 1.25, modo_redondeo)
+
+            items.append({
+                "index": idx,
+                "estado": "NUEVO",
+                "producto_id": None,
+                "codigo": codigo_raw or f"PROD-{idx + 1:04d}",
+                "codigo_barras": barras_raw or "",
+                "codigo_barras_blister": barras_blister_raw or "",
+                "codigo_barras_unidad": barras_unidad_raw or "",
+                "nombre": nombre_raw or f"Producto sin nombre {idx + 1}",
+                "nombre_original": nombre_raw or "",
+                "principio_activo": principio_activo,
+                "laboratorio": laboratorio,
+                "lote": lote_raw,
+                "vencimiento": vencimiento_raw,
+                "cantidad": cantidad,
+                "costo_unitario": costo_final,
+                "iva_porcentaje": iva_pct,
+                "precio_sugerido": precio_final,
+                "porcentaje_ganancia": margen_pct,
+                "stock_actual_bd": 0,
+                "maneja_fracciones": True if (rubro == "FARMACIA" or contenido_caja > 1) else False,
+                "contenido_caja": contenido_caja,
+                "contenido_blister": contenido_blister,
+                "precio_caja": p_caja_nuevo,
+                "precio_blister": p_blister_nuevo,
+                "precio_unidad": p_unidad_nuevo,
+                "es_obsequio_probable": es_obs,
+                "es_combo_probable": es_comb,
+                "factor_combo_sugerido": factor_sug,
+            })
+
+    # 6. Auto-detección de escala de decimales implícitos (ej. 1250000 para $12.500)
+    escala_detectada = 1
+    ratios_100 = 0
+    comparables = 0
+    for it in items:
+        c = it["costo_unitario"]
+        if it["producto_id"] and it["producto_id"] in prods_by_id:
+            p_bd = prods_by_id[it["producto_id"]]
+            costo_bd = float(p_bd.precio_costo or 0)
+            if costo_bd > 0 and c > 0:
+                comparables += 1
+                if 70 <= (c / costo_bd) <= 130:
+                    ratios_100 += 1
+
+    if comparables > 0 and (ratios_100 / comparables) >= 0.5:
+        escala_detectada = 100
+    elif not comparables and items:
+        costos_validos = [x["costo_unitario"] for x in items if x["costo_unitario"] > 0]
+        if costos_validos:
+            mediana = sorted(costos_validos)[len(costos_validos) // 2]
+            if mediana >= 300000 and all(c % 10 == 0 for c in costos_validos):
+                escala_detectada = 100
+
+    if escala_detectada > 1:
+        for it in items:
+            it["costo_unitario"] = round(it["costo_unitario"] / escala_detectada, 2)
+            if it["precio_sugerido"]:
+                it["precio_sugerido"] = _redondear_precio(it["precio_sugerido"] / escala_detectada, modo_redondeo)
+            if it["precio_caja"]:
+                it["precio_caja"] = _redondear_precio(it["precio_caja"] / escala_detectada, modo_redondeo)
+            if it["precio_blister"]:
+                it["precio_blister"] = _redondear_precio(it["precio_blister"] / escala_detectada, modo_redondeo)
+            if it["precio_unidad"]:
+                it["precio_unidad"] = _redondear_precio(it["precio_unidad"] / escala_detectada, modo_redondeo)
+            c_fin = it["costo_unitario"]
+            p_fin = it["precio_sugerido"]
+            if c_fin > 0 and p_fin > 0:
+                it["porcentaje_ganancia"] = round(((p_fin - c_fin) / c_fin) * 100, 2)
+
+    # Verificación de si la factura ya fue ingresada previamente
+    factura_ya_registrada = False
+    compra_previa_info = None
+    if numero_factura_detectado:
+        from app.models.inventario import Compra
+        stmt_c = (
+            select(Compra)
+            .options(joinedload(Compra.proveedor), joinedload(Compra.lineas))
+            .where(Compra.numero_factura_proveedor == numero_factura_detectado)
+        )
+        res_c = await db.execute(stmt_c)
+        c_prev = res_c.scalars().unique().first()
+        if c_prev:
+            factura_ya_registrada = True
+            compra_previa_info = {
+                "id": c_prev.id,
+                "numero": c_prev.numero,
+                "numero_factura_proveedor": c_prev.numero_factura_proveedor,
+                "fecha": c_prev.fecha.isoformat() if c_prev.fecha else None,
+                "total": float(c_prev.total or 0),
+                "proveedor_nombre": c_prev.proveedor.razon_social if c_prev.proveedor else "Proveedor",
+                "total_items": len(c_prev.lineas),
+            }
+
+    return {
+        "total_filas": len(items),
+        "encontrados": sum(1 for x in items if x["estado"] == "ENCONTRADO"),
+        "nuevos": sum(1 for x in items if x["estado"] == "NUEVO"),
+        "margen_predeterminado": margen_def,
+        "rubro": rubro,
+        "modo_redondeo": modo_redondeo,
+        "formato_detectado": formato_detectado,
+        "numero_factura_detectado": numero_factura_detectado,
+        "proveedor_detectado": proveedor_detectado,
+        "fecha_detectada": fecha_factura_detectada if 'fecha_factura_detectada' in locals() else None,
+        "escala_precios_detectada": escala_detectada,
+        "factura_ya_registrada": factura_ya_registrada,
+        "compra_previa": compra_previa_info,
+        "items": items,
     }

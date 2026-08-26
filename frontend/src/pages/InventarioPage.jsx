@@ -964,7 +964,7 @@ export default function InventarioPage() {
                     {/* Precios por presentación */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs text-dark-500 mb-1">Precio Venta Caja ($)</label>
+                        <label className="block text-xs text-dark-400 font-semibold mb-1">Precio Venta Caja ($)</label>
                         <input
                           type="number"
                           step="any"
@@ -975,7 +975,10 @@ export default function InventarioPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs text-dark-500 mb-1">Precio Venta Blister ($)</label>
+                        <label className="block text-xs text-dark-400 font-semibold mb-1">
+                          Precio Blister ($)
+                          <span className="text-[10px] text-dark-500 block font-normal">(Dejar en $0 si no vendes blíster)</span>
+                        </label>
                         <input
                           type="number"
                           step="any"
@@ -986,11 +989,15 @@ export default function InventarioPage() {
                       </div>
 
                       <div>
-                        <label className="block text-xs text-dark-500 mb-1">Precio Venta Unidad Suelta ($)</label>
+                        <label className="block text-xs text-dark-400 font-semibold mb-1">
+                          Precio Unidad Suelta ($)
+                          <span className="text-[10px] text-emerald-400/80 block font-normal">(Dejar en $0 para NO vender suelto)</span>
+                        </label>
                         <input
                           type="number"
                           step="any"
                           className="input-field text-primary-300 font-medium"
+                          placeholder="0 = No vende suelto"
                           value={formProducto.precio_unidad}
                           onChange={e => setFormProducto({ ...formProducto, precio_unidad: e.target.value })}
                         />

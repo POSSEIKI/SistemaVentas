@@ -19,6 +19,7 @@ class Usuario(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     codigo_hash = Column(String(255), nullable=False)
     rol_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="SET NULL"), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     ultimo_acceso = Column(DateTime(timezone=True))
     intentos_fallidos = Column(Integer, default=0, nullable=False)
@@ -26,6 +27,7 @@ class Usuario(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     rol = relationship("Rol", back_populates="usuarios")
+    empresa = relationship("Empresa", back_populates="usuarios")
     sesiones = relationship("Sesion", back_populates="usuario")
     facturas = relationship("Factura", back_populates="usuario", foreign_keys="[Factura.usuario_id]")
 

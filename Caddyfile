@@ -1,0 +1,19 @@
+{
+    email {$ACME_EMAIL:admin@sistemaventas.cloud}
+}
+
+# Dominio Principal y Subdominios
+{$DOMAIN:sistemaventas.cloud}, www.{$DOMAIN:sistemaventas.cloud}, app.{$DOMAIN:sistemaventas.cloud} {
+    # Compresión automática
+    encode zstd gzip
+
+    # Proxy para el API del Backend
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # Proxy para el Frontend
+    handle {
+        reverse_proxy frontend:80
+    }
+}

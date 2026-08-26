@@ -454,3 +454,66 @@ async def importar_archivo_productos(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando archivo: {str(e)}")
+
+# ─── APLICAR REDONDEO GLOBAL A TODO EL CATÁLOGO ───────────────────────────────
+
+@router.post("/aplicar-redondeo-global")
+async def aplicar_redondeo_global(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    from app.models.configuracion import ConfiguracionEmpresa
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    cfg = res_cfg.scalar_one_or_none()
+    modo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
+
+    def _redondear(val: float, modo_r: str) -> float:
+        if val <= 0:
+            return 0.0
+        if modo_r == "ENTERO":
+            return float(round(val))
+        elif modo_r == "CINCUENTA_50":
+            return float(round(val / 50.0) * 50)
+        elif modo_r == "CENTENA_100":
+            return float(round(val / 100.0) * 100)
+        elif modo_r == "MIL_1000":
+            return float(round(val / 1000.0) * 1000)
+        elif modo_r == "DECIMALES_2":
+            return round(val, 2)
+        else:
+            return float(round(val / 100.0) * 100)
+
+    res_prods = await db.execute(select(Producto))
+    prods = res_prods.scalars().all()
+    modificados = 0
+    for p in prods:
+        changed = False
+        if p.precio_venta is not None:
+            new_v = Decimal(str(_redondear(float(p.precio_venta), modo)))
+            if p.precio_venta != new_v:
+                p.precio_venta = new_v
+                changed = True
+        if p.precio_caja is not None and float(p.precio_caja) > 0:
+            new_c = Decimal(str(_redondear(float(p.precio_caja), modo)))
+            if p.precio_caja != new_c:
+                p.precio_caja = new_c
+                changed = True
+        if p.precio_blister is not None and float(p.precio_blister) > 0:
+            new_b = Decimal(str(_redondear(float(p.precio_blister), modo)))
+            if p.precio_blister != new_b:
+                p.precio_blister = new_b
+                changed = True
+        if p.precio_unidad is not None and float(p.precio_unidad) > 0:
+            new_u = Decimal(str(_redondear(float(p.precio_unidad), modo)))
+            if p.precio_unidad != new_u:
+                p.precio_unidad = new_u
+                changed = True
+        if changed:
+            modificados += 1
+
+    await db.commit()
+    return {
+        "mensaje": f"Se aplicó el redondeo ({modo}) a {modificados} productos del catálogo",
+        "productos_actualizados": modificados,
+        "modo_aplicado": modo,
+    }

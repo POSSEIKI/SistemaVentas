@@ -39,9 +39,33 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 async def init_db() -> None:
-    async with engine.begin() as conn:
-        from app.models import (  # noqa
-            usuario, producto, cliente, factura, inventario, configuracion,
-        )
-        await conn.run_sync(Base.metadata.create_all)
-        logger.info("Base de datos inicializada")
+    import asyncio
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with engine.begin() as conn:
+                from app.models import (  # noqa
+                    usuario, producto, cliente, factura, inventario, configuracion, suscripcion,
+                )
+                await conn.run_sync(Base.metadata.create_all)
+
+                # Migraciones seguras para columnas añadidas a tablas existentes
+                from sqlalchemy import text
+                await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL;"))
+            
+            # Inicializar planes por defecto si no existen
+            try:
+                from app.services.suscripcion_service import inicializar_planes_predeterminados
+                async with AsyncSessionLocal() as session:
+                    await inicializar_planes_predeterminados(session)
+            except Exception as e_seed:
+                logger.warning(f"No se pudieron precargar los planes: {e_seed}")
+
+            logger.info("Base de datos inicializada con tablas y planes")
+            return
+        except Exception as e:
+            logger.warning(f"Intento {attempt}/{max_retries} conectando a la BD falló ({e}). Reintentando en 1.5s...")
+            if attempt == max_retries:
+                logger.error("No se pudo inicializar la BD tras múltiples intentos. Continuando arranque de servidor.")
+                return
+            await asyncio.sleep(1.5)
