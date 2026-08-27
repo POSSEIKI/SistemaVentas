@@ -277,7 +277,7 @@ export default function VentasPage() {
       e.preventDefault()
       const cod = busqueda.trim()
       try {
-        const res = await productosApi.obtenerPorCodigo(cod)
+        const res = await productosApi.porCodigo(cod)
         if (res && res.producto) {
           procesarSeleccionProducto(res.producto, res.presentacion_detectada)
           setBusqueda('')
@@ -849,7 +849,8 @@ export default function VentasPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    store.agregarProducto(modalStock.producto, modalStock.presentacion, null, 1, false)
+                    const precioFinal = obtenerPrecioPresentacion(modalStock.producto, modalStock.presentacion)
+                    store.agregarProducto(modalStock.producto, modalStock.presentacion, precioFinal, 1, false)
                     setModalStock(null)
                     setBusqueda('')
                     setResultados([])
@@ -864,7 +865,8 @@ export default function VentasPage() {
               <button
                 type="button"
                 onClick={() => {
-                  store.agregarProducto(modalStock.producto, modalStock.presentacion, null, 1, true)
+                  const precioFinal = obtenerPrecioPresentacion(modalStock.producto, modalStock.presentacion)
+                  store.agregarProducto(modalStock.producto, modalStock.presentacion, precioFinal, 1, true)
                   toast.success(`📦 Facturado como Pedido por Encargo: ${modalStock.producto.nombre}`, { duration: 2500 })
                   setModalStock(null)
                   setBusqueda('')

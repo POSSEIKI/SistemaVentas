@@ -58,8 +58,12 @@ export const useVentaStore = create((set, get) => ({
   agregarProducto: (producto, presentacion = 'DIRECTO', precioPersonalizado = null, factorPersonalizado = 1, esEncargo = false) => {
     const { lineas } = get()
 
-    let precio = precioPersonalizado !== null ? parseFloat(precioPersonalizado) : parseFloat(producto.precio_venta || 0)
-    let factor = factorPersonalizado
+    const basePrecio = parseFloat(producto.precio_venta || producto.precio_caja || 0)
+    let precio = (precioPersonalizado !== null && precioPersonalizado !== undefined && parseFloat(precioPersonalizado) > 0)
+      ? parseFloat(precioPersonalizado)
+      : basePrecio
+
+    let factor = factorPersonalizado || 1
     let etiqueta = ''
 
     if (producto.maneja_fracciones) {
@@ -67,24 +71,33 @@ export const useVentaStore = create((set, get) => ({
       const uCaja = parseInt(producto.contenido_caja) || 1
       const uBlister = parseInt(producto.contenido_blister) || 0
 
-      if (presentacion === 'CAJA') {
-        precio = cajaP
+      if (presentacion === 'CAJA' || presentacion === 'DIRECTO') {
+        precio = (precioPersonalizado !== null && precioPersonalizado !== undefined && parseFloat(precioPersonalizado) > 0)
+          ? parseFloat(precioPersonalizado)
+          : (cajaP || basePrecio)
         factor = uCaja
-        etiqueta = ` [Caja x${factor}]`
+        if (presentacion === 'CAJA') etiqueta = ` [Caja x${factor}]`
       } else if (presentacion === 'BLISTER') {
         const rawBlister = parseFloat(producto.precio_blister || 0)
-        precio = rawBlister > 0 ? rawBlister : (uCaja > uBlister && uBlister > 1 ? (cajaP / (uCaja / uBlister)) * 1.12 : cajaP)
+        precio = (precioPersonalizado !== null && precioPersonalizado !== undefined && parseFloat(precioPersonalizado) > 0)
+          ? parseFloat(precioPersonalizado)
+          : (rawBlister > 0 ? rawBlister : (uCaja > uBlister && uBlister > 1 ? (cajaP / (uCaja / uBlister)) * 1.12 : cajaP))
         factor = uBlister > 0 ? uBlister : 1
         etiqueta = ` [Blister x${factor}]`
       } else if (presentacion === 'UNIDAD') {
         const rawUnidad = parseFloat(producto.precio_unidad || 0)
-        precio = rawUnidad > 0 ? rawUnidad : (uCaja > 1 ? (cajaP / uCaja) * 1.25 : cajaP)
+        precio = (precioPersonalizado !== null && precioPersonalizado !== undefined && parseFloat(precioPersonalizado) > 0)
+          ? parseFloat(precioPersonalizado)
+          : (rawUnidad > 0 ? rawUnidad : (uCaja > 1 ? (cajaP / uCaja) * 1.25 : cajaP))
         factor = 1
         etiqueta = ` [Unidad]`
       }
     }
 
     precio = redondearPrecio(precio)
+    if (precio <= 0 && basePrecio > 0) {
+      precio = redondearPrecio(basePrecio)
+    }
 
     const itemKey = `${producto.id}_${presentacion}_${esEncargo ? 'ENCARGO' : 'NORMAL'}`
     const existente = lineas.find(l => l.key === itemKey)
