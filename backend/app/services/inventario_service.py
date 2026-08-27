@@ -1061,9 +1061,9 @@ async def analizar_factura_compra_excel(
         except Exception:
             filas_raw = []
 
-    # D. Texto plano / Coopidrogas .DAT / .TXT / .CSV / .PRN / .TSV
+    # D. Texto plano / Archivos Planos .DAT / .TXT / .CSV / .PRN / .TSV
     else:
-        formato_detectado = "COOPIDROGAS_DAT_TEXT" if fname_lower.endswith(".dat") else "TEXTO_DELIMITADO"
+        formato_detectado = "PLANO_DAT_TXT" if fname_lower.endswith(".dat") else "TEXTO_DELIMITADO"
         try:
             texto = file_bytes.decode("utf-8")
         except UnicodeDecodeError:
@@ -1074,16 +1074,16 @@ async def analizar_factura_compra_excel(
 
         lineas_texto = [l.strip() for l in texto.splitlines() if l.strip()]
 
-        # Buscar encabezados de factura tipo Coopidrogas (F|... o H|...)
+        # Buscar encabezados de factura tipo plano (F|... o H|...)
         for l in lineas_texto[:5]:
-            if l.startswith(("F|", "H|", "FAC|")) or "COOPIDROGAS" in l.upper():
+            if l.startswith(("F|", "H|", "FAC|")):
                 partes = l.split("|") if "|" in l else l.split(";")
                 for p in partes:
                     p_limpio = p.strip()
                     if re.match(r"^[A-Z0-9\-]{4,20}$", p_limpio) and any(c.isdigit() for c in p_limpio):
                         if not numero_factura_detectado:
                             numero_factura_detectado = p_limpio
-                    if "COOPIDROGAS" in p_limpio.upper() or "DISTRIBUIDORA" in p_limpio.upper():
+                    if any(term in p_limpio.upper() for term in ["DISTRIBUIDORA", "DROGUERIA", "PROVEEDOR", "COMERCIO"]):
                         proveedor_detectado = p_limpio
 
         # Sniff delimiter
@@ -1093,7 +1093,7 @@ async def analizar_factura_compra_excel(
 
         if conteos[mejor_delim] > 0:
             for l in lineas_texto:
-                # Si la línea empieza por D| (detalle Coopidrogas), remover prefijo
+                # Si la línea empieza por D| (detalle), remover prefijo
                 l_procesar = l
                 if l.startswith("D|") and mejor_delim == "|":
                     l_procesar = l[2:]
@@ -1124,19 +1124,18 @@ async def analizar_factura_compra_excel(
             "items": [],
         }
 
-    # 3.1 Detección del Formato Oficial de Coopidrogas (18-25 columnas con Col 1=Cod Drogueria, Col 5=Nombre, Col 11=Barras, Col 7=Costo Descuento, Col 19=Total)
-    es_coopidrogas_oficial = False
+    # 3.1 Detección del Formato Plano Delimitado (18-25 columnas con Col 1=Cod, Col 5=Nombre, Col 11=Barras, Col 7=Costo Descuento, Col 19=Total)
+    es_plano_delimitado = False
     for f in filas_raw[:10]:
         if len(f) >= 11:
             nom_c = str(f[4]).strip() if len(f) > 4 else ""
             bar_c = str(f[10]).strip() if len(f) > 10 else ""
             if len(nom_c) >= 3 and any(c.isalpha() for c in nom_c) and (len(bar_c) >= 8 or re.match(r"^\d{8,14}$", bar_c)):
-                es_coopidrogas_oficial = True
+                es_plano_delimitado = True
                 break
 
-    if es_coopidrogas_oficial:
-        formato_detectado = "COOPIDROGAS_DAT_OFICIAL"
-        proveedor_detectado = "COOPIDROGAS"
+    if es_plano_delimitado:
+        formato_detectado = "PLANO_DAT_DELIMITADO"
         fecha_factura_detectada = None
         items = []
 

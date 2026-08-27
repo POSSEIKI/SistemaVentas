@@ -331,13 +331,15 @@ export default function ComprasPage() {
       }
 
       setLineas(nuevasLineas)
-      const descFormato = res.formato_detectado === 'PDF_FACTURA_MEDICAMENTOS'
-        ? 'Factura PDF (Recepción Medicamentos)'
-        : res.formato_detectado === 'COOPIDROGAS_DAT_TEXT' || res.formato_detectado === 'COOPIDROGAS_DAT_OFICIAL'
-        ? 'Coopidrogas .DAT'
+      const descFormato = res.formato_detectado?.includes('PDF')
+        ? 'Factura PDF'
+        : res.formato_detectado?.includes('DAT') || res.formato_detectado?.includes('TEXT')
+        ? 'Archivo Plano (.DAT / .TXT)'
         : res.formato_detectado === 'XML_DIAN'
         ? 'DIAN Factura Electrónica XML'
-        : 'Archivo'
+        : res.formato_detectado === 'EXCEL'
+        ? 'Archivo Excel'
+        : 'Factura Digital'
 
       const msgEscala = res.escala_precios_detectada > 1
         ? ` (Auto-escalado ÷${res.escala_precios_detectada} por centavos implícitos)`
@@ -795,7 +797,7 @@ export default function ComprasPage() {
                 ) : (
                   <FileSpreadsheet size={16} />
                 )}
-                <span>{analizandoExcel ? 'Analizando Factura...' : '📄 Cargar Factura (PDF, XML DIAN, Coopidrogas .DAT, Excel, CSV)'}</span>
+                <span>{analizandoExcel ? 'Analizando Factura...' : '📄 Cargar Factura (PDF, XML DIAN, Excel, CSV, Archivos Planos .DAT / .TXT)'}</span>
               </button>
 
               {lineas.length > 0 && (
@@ -871,11 +873,12 @@ export default function ComprasPage() {
                   {resumenCargue.formato_detectado && (
                     <span className="bg-primary-950 border border-primary-700 text-primary-300 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">
                       ⚡ Formato: {
-                        resumenCargue.formato_detectado === 'PDF_FACTURA_MEDICAMENTOS' ? 'PDF (Recepción de Medicamentos)' :
-                        resumenCargue.formato_detectado === 'COOPIDROGAS_DAT_TEXT' || resumenCargue.formato_detectado === 'COOPIDROGAS_DAT_OFICIAL' ? 'Coopidrogas .DAT' :
+                        resumenCargue.formato_detectado?.includes('PDF') ? 'Factura PDF' :
+                        resumenCargue.formato_detectado?.includes('DAT') || resumenCargue.formato_detectado?.includes('TEXT') ? 'Archivo Plano (.DAT / .TXT)' :
                         resumenCargue.formato_detectado === 'XML_DIAN' ? 'DIAN XML (Factura Electrónica)' :
                         resumenCargue.formato_detectado === 'EXCEL' ? 'Excel (.xlsx / .xls)' :
-                        resumenCargue.formato_detectado
+                        resumenCargue.formato_detectado === 'CSV' ? 'Archivo CSV' :
+                        'Factura Digital'
                       }
                     </span>
                   )}
