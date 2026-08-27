@@ -16,8 +16,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fuente
 COPY . .
 
-# Exponer puerto 8000
-EXPOSE 8000
-
-# Comando de arranque con uvicorn multi-worker para producción
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Comando de arranque con uvicorn respetando la variable $PORT de Render/Cloud
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
