@@ -22,10 +22,12 @@ export const productosApi = {
     return `${api.defaults.baseURL}/productos/exportar-inventario-fisico${sp ? `?${sp}` : ''}`
   },
   importarExcel: (formData) => api.post('/productos/importar-excel', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
   }).then(r => r.data),
   ajustarInventarioFisico: (formData) => api.post('/productos/ajustar-inventario-fisico', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
   }).then(r => r.data),
   aplicarRedondeoGlobal: () => api.post('/productos/aplicar-redondeo-global').then(r => r.data),
 }
@@ -67,7 +69,8 @@ export const inventarioApi = {
   listarCompras: (params) => api.get('/compras', { params }).then(r => r.data),
   obtenerCompra: (id) => api.get(`/compras/${id}`).then(r => r.data),
   analizarFacturaExcel: (formData) => api.post('/compras/analizar-factura-excel', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000,
   }).then(r => r.data),
   movimientos: (pid) => api.get('/inventario/movimientos', { params: pid ? { producto_id: pid } : {} }).then(r => r.data),
   stockBajo: () => api.get('/inventario/stock-bajo').then(r => r.data),

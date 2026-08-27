@@ -325,8 +325,8 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
     if not productos_a_procesar:
         raise ValueError("No se pudieron extraer productos válidos del archivo")
 
-    # 4. Upsert Masivo de alto rendimiento en bloques de 500
-    chunk_size = 500
+    # 4. Upsert Masivo de alto rendimiento en bloques optimizados
+    chunk_size = 1000
     total_procesados = len(productos_a_procesar)
 
     for idx in range(0, total_procesados, chunk_size):
@@ -358,7 +358,8 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
             }
         )
         await db.execute(stmt)
-        await db.commit()
+
+    await db.commit()
 
     return {
         "mensaje": f"¡Éxito! Se procesaron {total_procesados} productos correctamente.",
