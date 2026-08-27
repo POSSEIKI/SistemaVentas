@@ -17,7 +17,8 @@ export default function ReportesPage() {
   // Modal Devolución / Bono
   const [modalDevolucion, setModalDevolucion] = useState(null) // factura seleccionada
   const [motivoDevolucion, setMotivoDevolucion] = useState('')
-  const [tipoReembolso, setTipoReembolso] = useState('BONO') // 'BONO' | 'EFECTIVO'
+  const [tipoReembolso, setTipoReembolso] = useState('BONO') // 'BONO' | 'EFECTIVO' | 'TRANSFERENCIA'
+  const [pinAutorizacion, setPinAutorizacion] = useState('')
   const [procesandoDev, setProcesandoDev] = useState(false)
   const [resultadoDevolucion, setResultadoDevolucion] = useState(null)
   const [facturaTicket, setFacturaTicket] = useState(null) // Comprobante para visor/impresión/reimpresión
@@ -48,13 +49,15 @@ export default function ReportesPage() {
       const res = await facturasApi.devolucion(modalDevolucion.id, {
         motivo: motivoDevolucion.trim(),
         tipo_reembolso: tipoReembolso,
+        pin_autorizacion: pinAutorizacion.trim() || undefined,
       })
       toast.success(res.mensaje || 'Devolución procesada exitosamente')
       setResultadoDevolucion(res)
       setModalDevolucion(null)
+      setPinAutorizacion('')
       cargar(fecha)
     } catch (err) {
-      toast.error(err.message || 'Error procesando devolución')
+      toast.error(err.response?.data?.detail || err.message || 'Error procesando devolución')
     } finally {
       setProcesandoDev(false)
     }
@@ -272,10 +275,37 @@ export default function ReportesPage() {
                 </div>
               </div>
 
+              {/* Autorización de Administrador */}
+              <div className="space-y-1.5 bg-dark-900/60 p-3 rounded-xl border border-dark-700">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs text-dark-300 font-semibold uppercase tracking-wide">
+                    🔒 PIN / Clave de Administrador {tipoReembolso === 'EFECTIVO' ? '*' : '(Opcional)'}
+                  </label>
+                  {tipoReembolso === 'EFECTIVO' && (
+                    <span className="text-[10px] bg-red-950 text-red-300 px-2 py-0.5 rounded font-bold border border-red-800">
+                      Obligatorio para Efectivo
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="password"
+                  className="input-field text-sm font-mono tracking-widest"
+                  placeholder="Ingresa PIN o contraseña de Administrador"
+                  value={pinAutorizacion}
+                  onChange={e => setPinAutorizacion(e.target.value)}
+                  required={tipoReembolso === 'EFECTIVO'}
+                />
+                <p className="text-[11px] text-dark-400">
+                  {tipoReembolso === 'EFECTIVO'
+                    ? 'Por seguridad de caja y prevención de fraudes, la salida de efectivo requiere autorización de un Administrador.'
+                    : 'Si el usuario activo es Cajero, ingrese el PIN para autorizar la devolución.'}
+                </p>
+              </div>
+
               <div className="bg-amber-950/30 border border-amber-800/40 rounded-xl p-3 text-xs text-amber-300/90 flex gap-2.5">
                 <AlertTriangle size={18} className="flex-shrink-0 text-amber-400" />
                 <p>
-                  Al procesar la devolución, los productos retornarán automáticamente al inventario (si aplican) y la factura quedará marcada como DEVUELTA.
+                  Al procesar la devolución, los productos retornarán automáticamente al inventario físico con registro de auditoría y la factura quedará marcada como DEVUELTA.
                 </p>
               </div>
 
@@ -320,18 +350,18 @@ export default function ReportesPage() {
             </p>
 
             {resultadoDevolucion.bono && (
-              <div className="bg-gradient-to-br from-blue-950/80 to-dark-900 border-2 border-dashed border-blue-500/60 rounded-2xl p-5 space-y-2 text-left my-3 shadow-inner">
+              <div className="bg-gradient-to-br from-blue-950/80 to-dark-900 border-2 border-dashed border-blue-500/60 rounded-2xl p-5 space-y-2.5 text-left my-3 shadow-inner">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <Ticket size={15} /> Bono de Compra
+                    <Ticket size={15} /> Bono de Compra Oficial
                   </span>
                   <span className="text-xs text-green-400 font-bold bg-green-950/60 px-2 py-0.5 rounded border border-green-800 font-mono">
                     ACTIVO
                   </span>
                 </div>
                 <div className="text-center py-2">
-                  <p className="text-xs text-dark-400">Código para redimir en POS:</p>
-                  <p className="text-2xl font-mono font-extrabold text-white tracking-widest bg-dark-950/80 py-1.5 px-3 rounded-lg border border-dark-700 select-all my-1">
+                  <p className="text-xs text-dark-400">Código para redimir en el POS:</p>
+                  <p className="text-2xl font-mono font-extrabold text-white tracking-widest bg-dark-950/80 py-2 px-3 rounded-lg border border-dark-700 select-all my-1">
                     {resultadoDevolucion.bono.codigo}
                   </p>
                 </div>
@@ -342,10 +372,33 @@ export default function ReportesPage() {
                   </strong>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-dark-400">Titular:</span>
-                  <strong className="text-white truncate max-w-[180px]">
-                    {resultadoDevolucion.bono.cliente_nombre}
+                  <span className="text-dark-400">Titular (C.C. / NIT):</span>
+                  <strong className="text-white truncate max-w-[200px]">
+                    {resultadoDevolucion.bono.cliente_nombre} ({resultadoDevolucion.bono.cliente_nit || ''})
                   </strong>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(resultadoDevolucion.bono.codigo)
+                      toast.success('📋 Código del bono copiado al portapapeles')
+                    }}
+                    className="btn-secondary flex-1 py-1.5 text-xs flex items-center justify-center gap-1"
+                  >
+                    <span>📋 Copiar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const msg = encodeURIComponent(`🧾 *FACTUR-AAP - BONO DE COMPRA*\n\nHola! Se ha emitido un Bono a tu favor por devolución:\n\n🎟️ *Código:* ${resultadoDevolucion.bono.codigo}\n💰 *Saldo a favor:* ${formatCOP(resultadoDevolucion.bono.saldo_disponible)}\n👤 *Titular:* ${resultadoDevolucion.bono.cliente_nombre} (${resultadoDevolucion.bono.cliente_nit || ''})\n\nPuedes presentarlo en tu próxima compra para redimirlo en caja.`)
+                      window.open(`https://wa.me/?text=${msg}`, '_blank')
+                    }}
+                    className="btn-primary flex-1 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 border-emerald-500 flex items-center justify-center gap-1 font-bold shadow-md"
+                  >
+                    <span>📱 Enviar WhatsApp</span>
+                  </button>
                 </div>
               </div>
             )}

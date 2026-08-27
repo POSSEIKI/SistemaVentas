@@ -198,7 +198,8 @@ class AnularFacturaRequest(BaseModel):
 
 class DevolucionFacturaRequest(BaseModel):
     motivo: str
-    tipo_reembolso: str = "BONO"  # "BONO" | "EFECTIVO"
+    tipo_reembolso: str = "BONO"  # "BONO" | "EFECTIVO" | "TRANSFERENCIA"
+    pin_autorizacion: Optional[str] = None
 
 class BonoClienteOut(BaseModel):
     id: int

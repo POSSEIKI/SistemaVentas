@@ -1,6 +1,8 @@
 from decimal import Decimal
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+import json
+import secrets
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
@@ -12,6 +14,8 @@ from app.models.cliente import Cliente
 from app.models.bono import BonoCliente
 from app.models.inventario import Compra, CompraDetalle, MovimientoInventario
 from app.models.configuracion import ConfiguracionEmpresa
+from app.models.usuario import Usuario, Rol
+from app.core.security import verify_password
 from app.schemas.ventas import FacturaCreate, CompraCreate, DevolucionFacturaRequest
 
 async def _siguiente_numero(db: AsyncSession, prefijo: str, modelo, campo) -> str:
@@ -194,12 +198,46 @@ async def procesar_devolucion_factura(
     if factura.estado in ["ANULADA", "DEVUELTA"]:
         raise HTTPException(status_code=400, detail="La factura ya fue anulada o devuelta previamente")
 
+    # ─── 0. Verificación de Seguridad y Autorización Anti-Fraude ─────────────
+    # Consultar usuario y rol actual
+    res_user = await db.execute(select(Usuario).options(joinedload(Usuario.rol)).where(Usuario.id == usuario_id))
+    user_actual = res_user.scalar_one_or_none()
+
+    permisos = json.loads(user_actual.rol.permisos) if (user_actual and user_actual.rol and user_actual.rol.permisos) else {}
+    es_admin = bool(
+        permisos.get("administrador_total") or
+        (user_actual and user_actual.rol and user_actual.rol.nombre in ["Administrador", "Admin", "Gerente"])
+    )
+
+    autorizado_por_admin = es_admin
+    admin_autorizador_nombre = user_actual.nombre if es_admin else None
+
+    # Si se proporcionó un PIN / contraseña de autorización, validarlo contra administradores
+    if datos.pin_autorizacion and datos.pin_autorizacion.strip():
+        res_admins = await db.execute(select(Usuario).options(joinedload(Usuario.rol)).where(Usuario.activo == True))
+        admins = res_admins.scalars().all()
+        for adm in admins:
+            adm_perms = json.loads(adm.rol.permisos) if (adm.rol and adm.rol.permisos) else {}
+            if adm_perms.get("administrador_total") or (adm.rol and adm.rol.nombre in ["Administrador", "Admin", "Gerente"]):
+                if verify_password(datos.pin_autorizacion.strip(), adm.codigo_hash):
+                    autorizado_por_admin = True
+                    admin_autorizador_nombre = adm.nombre
+                    break
+
+    # Si el método es Reembolso en Efectivo o Transferencia, exigir autorización obligatoria
+    if datos.tipo_reembolso in ["EFECTIVO", "TRANSFERENCIA"] and not autorizado_por_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="La devolución de dinero (Efectivo o Transferencia) requiere obligatoriamente autorización con PIN o contraseña de Administrador por seguridad de caja."
+        )
+
     factura.estado = "DEVUELTA"
     factura.anulada_por = usuario_id
     factura.anulada_en = datetime.now(timezone.utc)
-    factura.motivo_anulacion = f"[{datos.tipo_reembolso}] {datos.motivo}"
+    autorizador_txt = f" [Autorizado por: {admin_autorizador_nombre}]" if admin_autorizador_nombre else ""
+    factura.motivo_anulacion = f"[{datos.tipo_reembolso}]{autorizador_txt} {datos.motivo}"
 
-    # 1. Revertir inventario
+    # ─── 1. Revertir Inventario con Trazabilidad Completa ───────────────────────
     for linea in factura.lineas:
         result_p = await db.execute(select(Producto).where(Producto.id == linea.producto_id))
         producto = result_p.scalar_one_or_none()
@@ -215,27 +253,31 @@ async def procesar_devolucion_factura(
                 cantidad=unids_retorno,
                 stock_anterior=stock_ant,
                 stock_nuevo=producto.stock_actual,
+                costo_unitario=producto.precio_costo,
                 referencia_tipo="DEVOLUCION",
                 referencia_id=factura_id,
                 usuario_id=usuario_id,
-                observacion=f"Devolución factura {factura.numero}: {datos.motivo}",
+                observacion=f"Devolución factura {factura.numero}: {datos.motivo}{autorizador_txt}",
             )
             db.add(mov)
 
-    # 2. Generar bono si el tipo de reembolso es BONO
+    # ─── 2. Generar Bono Seguro con Titular Cédula / NIT ────────────────────────
     bono_obj = None
     if datos.tipo_reembolso == "BONO":
         res_count = await db.execute(select(func.count(BonoCliente.id)))
         num_bono = (res_count.scalar() or 0) + 1
-        codigo_bono = f"BONO-{num_bono:05d}"
+        sufijo_seguro = secrets.token_hex(2).upper()
+        codigo_bono = f"BONO-{num_bono:04d}-{sufijo_seguro}"
+
+        cliente_id_bono = factura.cliente_id if factura.cliente_id else 1
 
         bono_obj = BonoCliente(
             codigo=codigo_bono,
-            cliente_id=factura.cliente_id,
+            cliente_id=cliente_id_bono,
             factura_origen_id=factura.id,
             monto_inicial=factura.total,
             saldo_disponible=factura.total,
-            motivo=f"Devolución factura {factura.numero}: {datos.motivo}",
+            motivo=f"Devolución factura {factura.numero}: {datos.motivo}{autorizador_txt}",
             tipo_reembolso="BONO",
             estado="ACTIVO",
         )
@@ -245,17 +287,25 @@ async def procesar_devolucion_factura(
     if bono_obj:
         await db.refresh(bono_obj)
 
+    nom_cliente = factura.cliente.nombre if factura.cliente else "Cliente Mostrador"
+    doc_cliente = factura.cliente.nit if factura.cliente else "222222222222"
+
     return {
         "mensaje": f"Devolución procesada con éxito ({'Bono generado' if bono_obj else 'Reembolso en efectivo'})",
         "factura_id": factura.id,
         "factura_numero": factura.numero,
         "monto_reembolsado": float(factura.total),
         "tipo_reembolso": datos.tipo_reembolso,
+        "autorizado_por": admin_autorizador_nombre,
         "bono": {
             "id": bono_obj.id,
             "codigo": bono_obj.codigo,
             "saldo_disponible": float(bono_obj.saldo_disponible),
-            "cliente_nombre": factura.cliente.nombre if factura.cliente else "Cliente",
+            "cliente_id": bono_obj.cliente_id,
+            "cliente_nombre": nom_cliente,
+            "cliente_nit": doc_cliente,
+            "motivo": bono_obj.motivo,
+            "created_at": bono_obj.created_at.isoformat() if bono_obj.created_at else None,
         } if bono_obj else None
     }
 
