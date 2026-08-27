@@ -221,6 +221,8 @@ class LineaCompraCreate(BaseModel):
     costo_unitario: Decimal
     iva_porcentaje: Decimal = Decimal("0")
     precio_sugerido: Optional[Decimal] = None
+    costo_calculado_producto: Optional[Decimal] = None
+    estrategia_costo: Optional[str] = "PROMEDIO_PONDERADO"
     maneja_fracciones: Optional[bool] = None
     contenido_caja: Optional[int] = None
     contenido_blister: Optional[int] = None
@@ -236,6 +238,7 @@ class CompraCreate(BaseModel):
     numero_factura_proveedor: Optional[str] = None
     lineas: List[LineaCompraCreate]
     observaciones: Optional[str] = None
+    estrategia_costo_global: Optional[str] = "PROMEDIO_PONDERADO"
 
 # ─── Proveedores ──────────────────────────────────────────────────────────────
 

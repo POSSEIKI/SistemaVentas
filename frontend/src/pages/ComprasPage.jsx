@@ -33,6 +33,7 @@ export default function ComprasPage() {
   const [rubro, setRubro] = useState('FARMACIA')
   const [margenPredeterminado, setMargenPredeterminado] = useState(30.0)
   const [modoRedondeo, setModoRedondeo] = useState('CENTENA_100')
+  const [estrategiaCostoGlobal, setEstrategiaCostoGlobal] = useState('PROMEDIO_PONDERADO') // 'PROMEDIO_PONDERADO' | 'COSTO_MAS_ALTO' | 'ULTIMO_COSTO'
 
   // Modal de Parametrización y Alta de Producto / Fraccionamiento
   const [modalParametrizar, setModalParametrizar] = useState(null)
@@ -243,6 +244,53 @@ export default function ComprasPage() {
     setLineas(prev => prev.map(l => l.key === lineaKey ? { ...l, [campo]: valor } : l))
   }
 
+  const handleCambiarEstrategiaCostoLinea = (lineaKey, nuevaEstrategia) => {
+    setLineas(prev => prev.map(l => {
+      if (l.key === lineaKey) {
+        let nuevoCosto = l.costo_unitario
+        if (nuevaEstrategia === 'PROMEDIO_PONDERADO') {
+          nuevoCosto = l.costo_promedio_ponderado || l.costo_unitario
+        } else if (nuevaEstrategia === 'COSTO_MAS_ALTO') {
+          nuevoCosto = l.costo_mas_alto || l.costo_unitario
+        } else if (nuevaEstrategia === 'ULTIMO_COSTO') {
+          nuevoCosto = l.costo_ultimo || l.costo_factura || l.costo_unitario
+        }
+        const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCosto, l.porcentaje_ganancia, modoRedondeo)
+        return {
+          ...l,
+          estrategia_costo: nuevaEstrategia,
+          costo_unitario: nuevoCosto,
+          precio_sugerido: nuevoPrecio,
+          precio_caja: l.maneja_fracciones ? nuevoPrecio : l.precio_caja,
+        }
+      }
+      return l
+    }))
+  }
+
+  const handleCambiarEstrategiaGlobal = (nuevaEstrategia) => {
+    setEstrategiaCostoGlobal(nuevaEstrategia)
+    setLineas(prev => prev.map(l => {
+      let nuevoCosto = l.costo_unitario
+      if (nuevaEstrategia === 'PROMEDIO_PONDERADO') {
+        nuevoCosto = l.costo_promedio_ponderado || l.costo_unitario
+      } else if (nuevaEstrategia === 'COSTO_MAS_ALTO') {
+        nuevoCosto = l.costo_mas_alto || l.costo_unitario
+      } else if (nuevaEstrategia === 'ULTIMO_COSTO') {
+        nuevoCosto = l.costo_ultimo || l.costo_factura || l.costo_unitario
+      }
+      const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCosto, l.porcentaje_ganancia, modoRedondeo)
+      return {
+        ...l,
+        estrategia_costo: nuevaEstrategia,
+        costo_unitario: nuevoCosto,
+        precio_sugerido: nuevoPrecio,
+        precio_caja: l.maneja_fracciones ? nuevoPrecio : l.precio_caja,
+      }
+    }))
+    toast.success(`Estrategia aplicada: ${nuevaEstrategia === 'PROMEDIO_PONDERADO' ? '⚖️ Promedio Ponderado' : nuevaEstrategia === 'COSTO_MAS_ALTO' ? '🛡️ Costo Más Alto' : '🔄 Último Costo'}`)
+  }
+
   // ─── Cargue y Análisis de Factura Multi-formato (Coopidrogas .DAT, XML DIAN, Excel, CSV) ─────────────
   const handleCargarFacturaExcel = async (e) => {
     const file = e.target.files?.[0]
@@ -297,9 +345,17 @@ export default function ComprasPage() {
         vencimiento: it.vencimiento || null,
         cantidad: it.cantidad || 1,
         costo_unitario: it.costo_unitario || 0,
+        costo_factura: it.costo_factura || it.costo_unitario || 0,
+        costo_anterior_bd: it.costo_anterior_bd || 0,
+        costo_promedio_ponderado: it.costo_promedio_ponderado || it.costo_unitario || 0,
+        costo_mas_alto: it.costo_mas_alto || it.costo_unitario || 0,
+        costo_ultimo: it.costo_ultimo || it.costo_unitario || 0,
+        estrategia_costo: it.estrategia_costo || 'PROMEDIO_PONDERADO',
+        cambio_costo_detectado: it.cambio_costo_detectado || false,
         iva_porcentaje: it.iva_porcentaje || 0,
         porcentaje_ganancia: it.porcentaje_ganancia || margenPredeterminado,
         precio_sugerido: it.precio_sugerido || 0,
+        stock_actual_bd: it.stock_actual_bd || 0,
         maneja_fracciones: it.maneja_fracciones || false,
         contenido_caja: it.contenido_caja || 1,
         contenido_blister: it.contenido_blister || 0,
@@ -726,7 +782,9 @@ export default function ComprasPage() {
         lineasProcesadas.push({
           producto_id: prodId,
           cantidad: l.cantidad,
-          costo_unitario: l.costo_unitario,
+          costo_unitario: l.costo_factura || l.costo_unitario,
+          costo_calculado_producto: l.costo_unitario,
+          estrategia_costo: l.estrategia_costo || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO',
           iva_porcentaje: l.iva_porcentaje || 0,
           precio_sugerido: l.precio_sugerido || null,
           maneja_fracciones: l.maneja_fracciones,
@@ -745,6 +803,7 @@ export default function ComprasPage() {
       const res = await inventarioApi.registrarCompra({
         proveedor_id: proveedorId ? parseInt(proveedorId) : null,
         numero_factura_proveedor: numFactura || null,
+        estrategia_costo_global: estrategiaCostoGlobal || 'PROMEDIO_PONDERADO',
         lineas: lineasProcesadas,
       })
 
@@ -939,6 +998,58 @@ export default function ComprasPage() {
                 title="Multiplicar por 100 si se dividieron de más"
               >
                 × 100
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Estrategia de Valoración de Costos e Inventario */}
+          <div className="bg-dark-900/90 border border-primary-800/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+            <div className="flex items-center gap-2 text-dark-300">
+              <span className="w-7 h-7 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center font-bold text-sm">
+                ⚖️
+              </span>
+              <div>
+                <span className="font-bold text-white block">Estrategia de Valoración de Costos:</span>
+                <span className="text-[11px] text-dark-400">
+                  ¿Cómo calcular el nuevo costo y precio cuando ya tienes stock anterior en bodega/tanque?
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleCambiarEstrategiaGlobal('PROMEDIO_PONDERADO')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
+                  estrategiaCostoGlobal === 'PROMEDIO_PONDERADO'
+                    ? 'bg-primary-600 text-white border-primary-500 shadow-md shadow-primary-900/40'
+                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
+                }`}
+              >
+                <span>⚖️ Promedio Ponderado</span>
+                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded font-normal">Recomendado</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCambiarEstrategiaGlobal('COSTO_MAS_ALTO')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
+                  estrategiaCostoGlobal === 'COSTO_MAS_ALTO'
+                    ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-900/40'
+                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
+                }`}
+              >
+                <span>🛡️ Costo Más Alto</span>
+                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded font-normal">Protección Margen</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCambiarEstrategiaGlobal('ULTIMO_COSTO')}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
+                  estrategiaCostoGlobal === 'ULTIMO_COSTO'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-900/40'
+                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
+                }`}
+              >
+                <span>🔄 Último Costo Factura</span>
               </button>
             </div>
           </div>
@@ -1151,7 +1262,7 @@ export default function ComprasPage() {
                     </td>
 
                     {/* Producto */}
-                    <td className="px-3 py-2 min-w-[200px]">
+                    <td className="px-3 py-2 min-w-[220px]">
                       <p className="text-white font-semibold text-xs leading-tight truncate">{l.nombre}</p>
                       <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-dark-400 mt-0.5">
                         <span className="font-mono bg-dark-900 px-1 rounded border border-dark-700">{l.codigo || 'S/C'}</span>
@@ -1177,6 +1288,57 @@ export default function ComprasPage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Badge y Switcher de Estrategia de Costo (Promedio Ponderado vs Costo Más Alto) */}
+                      {l.stock_actual_bd > 0 && l.costo_anterior_bd > 0 && (
+                        <div className="mt-2 bg-dark-900/90 border border-dark-700 rounded-lg p-2 space-y-1.5 text-[11px]">
+                          <div className="flex items-center justify-between gap-1 text-[10px] text-dark-400">
+                            <span>📦 Stock actual: <strong className="text-dark-200">{l.stock_actual_bd}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_anterior_bd)}</span></span>
+                            <span>📥 Factura: <strong className="text-dark-200">{l.cantidad}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_factura || l.costo_unitario)}</span></span>
+                          </div>
+                          <div className="flex items-center gap-1 pt-0.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'PROMEDIO_PONDERADO')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
+                                l.estrategia_costo === 'PROMEDIO_PONDERADO'
+                                  ? 'bg-primary-600 text-white border-primary-500 shadow-sm'
+                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
+                              }`}
+                              title="Costo Promedio Ponderado según stock existente y nueva compra"
+                            >
+                              <span>⚖️ Promedio:</span>
+                              <span className="font-mono">{formatCOP(l.costo_promedio_ponderado || l.costo_unitario)}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'COSTO_MAS_ALTO')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
+                                l.estrategia_costo === 'COSTO_MAS_ALTO'
+                                  ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
+                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
+                              }`}
+                              title="Usar el costo más alto para proteger margen de ganancia"
+                            >
+                              <span>🛡️ Techo:</span>
+                              <span className="font-mono">{formatCOP(l.costo_mas_alto || l.costo_unitario)}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'ULTIMO_COSTO')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
+                                l.estrategia_costo === 'ULTIMO_COSTO'
+                                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
+                              }`}
+                              title="Usar el costo que llegó en esta factura directamente"
+                            >
+                              <span>🔄 Factura:</span>
+                              <span className="font-mono">{formatCOP(l.costo_ultimo || l.costo_factura || l.costo_unitario)}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </td>
 
                     {/* Cantidad */}

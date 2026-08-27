@@ -1621,7 +1621,24 @@ async def analizar_factura_compra_excel(
 
         if prod_encontrado:
             p = prod_encontrado
-            costo_final = costo_unit if costo_unit > 0 else float(p.precio_costo or 0)
+            costo_factura = costo_unit if costo_unit > 0 else float(p.precio_costo or 0)
+            costo_ant = float(p.precio_costo or 0)
+            stock_ant = float(p.stock_actual or 0)
+            cant_nueva = cantidad
+
+            # Cálculo de Costo Promedio Ponderado vs Costo Más Alto vs Último Costo
+            if stock_ant > 0 and costo_ant > 0 and costo_factura > 0:
+                cpp = round(((stock_ant * costo_ant) + (cant_nueva * costo_factura)) / (stock_ant + cant_nueva), 2)
+                costo_max = max(costo_ant, costo_factura)
+                costo_ult = costo_factura
+                cambio_costo = abs(costo_factura - costo_ant) > 0.01
+            else:
+                cpp = costo_factura
+                costo_max = costo_factura
+                costo_ult = costo_factura
+                cambio_costo = False
+
+            costo_final = cpp
             precio_final = precio_sug_excel if (precio_sug_excel and precio_sug_excel > 0) else float(p.precio_venta or 0)
             if precio_final <= 0 and costo_final > 0:
                 precio_final = _redondear_precio(costo_final * (1 + margen_def / 100), modo_redondeo)
@@ -1645,10 +1662,17 @@ async def analizar_factura_compra_excel(
                 "vencimiento": vencimiento_raw,
                 "cantidad": cantidad,
                 "costo_unitario": costo_final,
+                "costo_factura": costo_factura,
+                "costo_anterior_bd": costo_ant,
+                "costo_promedio_ponderado": cpp,
+                "costo_mas_alto": costo_max,
+                "costo_ultimo": costo_ult,
+                "estrategia_costo": "PROMEDIO_PONDERADO",
+                "cambio_costo_detectado": cambio_costo,
                 "iva_porcentaje": iva_pct if iva_pct > 0 else float(p.iva_porcentaje or 0),
                 "precio_sugerido": precio_final,
                 "porcentaje_ganancia": margen_pct,
-                "stock_actual_bd": float(p.stock_actual or 0),
+                "stock_actual_bd": stock_ant,
                 "maneja_fracciones": p.maneja_fracciones,
                 "contenido_caja": p.contenido_caja or contenido_caja,
                 "contenido_blister": p.contenido_blister or contenido_blister,

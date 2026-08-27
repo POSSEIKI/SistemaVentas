@@ -402,9 +402,26 @@ async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -
 
         # Actualizar stock, costo, venta y parametrización de fracciones
         if producto.afecta_inventario and not producto.es_servicio:
-            stock_ant = producto.stock_actual
-            producto.stock_actual = producto.stock_actual + linea.cantidad
-            producto.precio_costo = linea.costo_unitario
+            stock_ant = Decimal(str(producto.stock_actual or 0))
+            costo_ant = Decimal(str(producto.precio_costo or 0))
+            cant_nueva = Decimal(str(linea.cantidad or 0))
+            costo_factura = Decimal(str(linea.costo_unitario or 0))
+
+            producto.stock_actual = stock_ant + cant_nueva
+
+            # Determinar nuevo costo del producto según estrategia (CPP / Costo Más Alto / Último Costo)
+            if linea.costo_calculado_producto is not None and linea.costo_calculado_producto > 0:
+                producto.precio_costo = linea.costo_calculado_producto
+            else:
+                estrategia = linea.estrategia_costo or getattr(datos, 'estrategia_costo_global', 'PROMEDIO_PONDERADO') or 'PROMEDIO_PONDERADO'
+                if estrategia == "PROMEDIO_PONDERADO" and stock_ant > 0 and costo_ant > 0:
+                    cpp = ((stock_ant * costo_ant) + (cant_nueva * costo_factura)) / (stock_ant + cant_nueva)
+                    producto.precio_costo = cpp.quantize(Decimal("0.01"))
+                elif estrategia == "COSTO_MAS_ALTO" and costo_ant > 0:
+                    producto.precio_costo = max(costo_ant, costo_factura)
+                else:
+                    producto.precio_costo = costo_factura
+
             if linea.precio_sugerido:
                 producto.precio_venta = linea.precio_sugerido
 
