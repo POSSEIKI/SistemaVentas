@@ -1,23 +1,32 @@
 import { useState, useRef, useEffect } from 'react'
 import {
-  Printer, Share2, Mail, MessageSquare, X, Check,
-  FileText, Copy, Smartphone, Monitor, ChevronDown, Download, Image as ImageIcon
+  Printer, Mail, MessageSquare, X, Check,
+  FileText, Copy, Download, Image as ImageIcon, Send
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatCOP } from '../../utils/pricing'
+import { clientesApi } from '../../api/services'
 import {
   copiarTicketComoImagen,
-  descargarTicketComoImagen,
+  generarTicketPDFFile,
   descargarTicketComoPDF
 } from '../../utils/ticketExporter'
 
 export default function ModalTicketFactura({ factura, onCerrar, formatoInicial = '80MM' }) {
   const [formato, setFormato] = useState(formatoInicial || factura?.empresa?.formato_impresion || '80MM')
+  
+  // Modales secundarios
   const [whatsappModal, setWhatsappModal] = useState(false)
   const [telefonoWhatsapp, setTelefonoWhatsapp] = useState(factura?.cliente?.telefono || '')
+  
+  const [emailModal, setEmailModal] = useState(false)
+  const [emailDestino, setEmailDestino] = useState(factura?.cliente?.email || '')
+  const [guardandoEmail, setGuardandoEmail] = useState(false)
+
+  // Estados de carga
   const [copiandoImagen, setCopiandoImagen] = useState(false)
-  const [descargandoPdf, setDescargandoPdf] = useState(false)
-  const [descargandoImg, setDescargandoImg] = useState(false)
+  const [generandoPdf, setGenerandoPdf] = useState(false)
+  const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false)
 
   const ticketRef = useRef(null)
 
@@ -31,15 +40,14 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
 
   const { empresa = {}, cliente = {}, cajero = {}, lineas = [] } = factura || {}
 
-  // ─── Generación de Texto para WhatsApp / Portapapeles ───────────────────────
+  // ─── Generación de Texto para WhatsApp / Correo ─────────────────────────────
   const generarTextoResumen = () => {
-    let t = `🧾 *COMPROBANTE DE PAGO*\n`
-    t += `🏪 *${empresa?.nombre || 'FACTUR-AAP POS'}*\n`
+    let t = `🧾 *FACTURA DE VENTA - ${factura.numero}*\n`
+    t += `🏪 *${empresa?.nombre || 'FACTUR-AAP'}*\n`
     if (empresa?.nit) t += `NIT: ${empresa.nit}\n`
     if (empresa?.direccion) t += `Dir: ${empresa.direccion} - ${empresa.ciudad || ''}\n`
     if (empresa?.telefono) t += `Tel: ${empresa.telefono}\n`
     t += `----------------------------------------\n`
-    t += `📄 *Factura N°:* ${factura.numero}\n`
     t += `📅 *Fecha:* ${factura.fecha_formateada || new Date(factura.fecha).toLocaleString('es-CO')}\n`
     t += `👤 *Cliente:* ${cliente?.nombre || 'Consumidor Final'} (${cliente?.nit || ''})\n`
     if (cajero?.nombre) t += `👨‍💼 *Atendido por:* ${cajero.nombre}\n`
@@ -65,86 +73,139 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
     return t
   }
 
-  // ─── 1. Copiar Factura como Imagen (.PNG) al Portapapeles ───────────────────
+  // ─── 1. IMPRIMIR TICKET (Acción Principal Predeterminada) ───────────────────
+  const handleImprimir = () => {
+    window.print()
+  }
+
+  // ─── 2. WHATSAPP (Genera Factura PDF automáticamente para adjuntar) ────────
+  const handleAbrirModalWhatsapp = () => {
+    setTelefonoWhatsapp(cliente?.telefono || '')
+    setWhatsappModal(true)
+  }
+
+  const handleEnviarWhatsapp = async (e) => {
+    e?.preventDefault()
+    const telLimpio = (telefonoWhatsapp || '').replace(/\D/g, '')
+    if (!telLimpio || telLimpio.length < 7) {
+      toast.error('Ingresa un número de celular válido para enviar la factura')
+      return
+    }
+
+    setEnviandoWhatsapp(true)
+    try {
+      // Generar archivo PDF oficial
+      const { file, filename } = await generarTicketPDFFile(ticketRef.current, factura.numero, formato)
+
+      // Si el navegador soporta compartir archivos directamente (móviles/tablets/apps)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Factura ${factura.numero}`,
+          text: `Factura de compra N° ${factura.numero} - ${empresa?.nombre || 'FACTUR-AAP'}`,
+        })
+        toast.success('📄 Factura PDF enviada a WhatsApp')
+        setWhatsappModal(false)
+        return
+      }
+
+      // En PC / WhatsApp Web: auto-descargar el PDF y abrir el chat
+      await descargarTicketComoPDF(ticketRef.current, factura.numero, formato)
+      const telInternacional = telLimpio.length === 10 ? `57${telLimpio}` : telLimpio
+      const texto = encodeURIComponent(generarTextoResumen())
+
+      // Auto-copiar también la imagen PNG por si el usuario prefiere pegar directo
+      try {
+        await copiarTicketComoImagen(ticketRef.current, factura.numero)
+      } catch (ignore) {}
+
+      toast.success('📄 Factura PDF generada y lista para adjuntar en WhatsApp (Imagen copiada al portapapeles)', { duration: 6000 })
+      window.open(`https://wa.me/${telInternacional}?text=${texto}`, '_blank')
+      setWhatsappModal(false)
+    } catch (err) {
+      toast.error('Error al preparar Factura PDF: ' + err.message)
+    } finally {
+      setEnviandoWhatsapp(false)
+    }
+  }
+
+  // ─── 3. CORREO ELECTRÓNICO (Con solicitud de email y auto-actualización) ──
+  const handleAbrirModalEmail = () => {
+    const emailExistente = cliente?.email || ''
+    setEmailDestino(emailExistente)
+    setEmailModal(true)
+  }
+
+  const handleEnviarEmailConfirmado = async (e) => {
+    e?.preventDefault()
+    const emailLimpio = (emailDestino || '').trim().toLowerCase()
+    if (!emailLimpio || !emailLimpio.includes('@') || !emailLimpio.includes('.')) {
+      toast.error('Por favor ingresa un correo electrónico válido')
+      return
+    }
+
+    setGuardandoEmail(true)
+    try {
+      // Si es un cliente registrado en la base de datos (id > 1) y no tenía este correo, actualizarlo
+      if (cliente?.id && cliente.id > 1 && cliente.email !== emailLimpio) {
+        try {
+          await clientesApi.actualizar(cliente.id, { email: emailLimpio })
+          toast.success(`Datos actualizados: correo ${emailLimpio} guardado para el cliente`)
+        } catch (ignore) {}
+      }
+
+      // Generar y descargar Factura PDF para adjuntar
+      await descargarTicketComoPDF(ticketRef.current, factura.numero, formato)
+
+      const asunto = encodeURIComponent(`Factura de Venta ${factura.numero} - ${empresa?.nombre || 'FACTUR-AAP'}`)
+      const cuerpo = encodeURIComponent(
+        `Estimado(a) ${cliente?.nombre || 'Cliente'},\n\n` +
+        `Adjunto encontrará el comprobante oficial en formato PDF de su compra N° ${factura.numero}.\n\n` +
+        `Resumen de la Factura:\n` +
+        `• Total Pagado: ${formatCOP(factura.total)}\n` +
+        `• Medio de Pago: ${factura.forma_pago}\n` +
+        `• Fecha: ${factura.fecha_formateada || new Date(factura.fecha).toLocaleString('es-CO')}\n\n` +
+        `¡Gracias por su compra!\n${empresa?.nombre || 'FACTUR-AAP'}`
+      )
+
+      window.open(`mailto:${emailLimpio}?subject=${asunto}&body=${cuerpo}`, '_self')
+      toast.success(`📄 Factura ${factura.numero}.pdf lista para adjuntar en tu correo`)
+      setEmailModal(false)
+    } catch (err) {
+      toast.error('Error al procesar envío por correo: ' + err.message)
+    } finally {
+      setGuardandoEmail(false)
+    }
+  }
+
+  // ─── 4. COPIAR (.PNG Imagen al Portapapeles) ────────────────────────────────
   const handleCopiarImagen = async () => {
     setCopiandoImagen(true)
     try {
       const res = await copiarTicketComoImagen(ticketRef.current, factura.numero)
       if (res.metodo === 'PORTAPAPELES') {
-        toast.success('📸 ¡Imagen (.PNG) copiada al portapapeles! Pégala directamente con Ctrl+V en WhatsApp o tu chat.', { duration: 6000 })
+        toast.success('📋 ¡Imagen (.PNG) copiada al portapapeles! Pégala con Ctrl + V en WhatsApp o notas.', { duration: 5000 })
       } else {
-        toast.success('📸 Imagen (.PNG) descargada exitosamente para compartir.')
+        toast.success('📋 Imagen (.PNG) descargada exitosamente.')
       }
     } catch (err) {
-      toast.error('Error al generar imagen del comprobante: ' + err.message)
+      toast.error('Error al capturar imagen: ' + err.message)
     } finally {
       setCopiandoImagen(false)
     }
   }
 
-  // ─── 2. Descargar Factura como PDF (.PDF) ───────────────────────────────────
+  // ─── 5. DESCARGAR PDF (Última opción secundaria) ───────────────────────────
   const handleDescargarPDF = async () => {
-    setDescargandoPdf(true)
+    setGenerandoPdf(true)
     try {
       await descargarTicketComoPDF(ticketRef.current, factura.numero, formato)
       toast.success(`📄 Factura ${factura.numero}.pdf descargada exitosamente`)
     } catch (err) {
-      toast.error('Error al generar archivo PDF: ' + err.message)
+      toast.error('Error al generar PDF: ' + err.message)
     } finally {
-      setDescargandoPdf(false)
+      setGenerandoPdf(false)
     }
-  }
-
-  // ─── 3. Descargar Factura como Imagen (.PNG) ────────────────────────────────
-  const handleDescargarImagen = async () => {
-    setDescargandoImg(true)
-    try {
-      await descargarTicketComoImagen(ticketRef.current, factura.numero, 'png')
-      toast.success(`🖼️ Factura ${factura.numero}.png descargada exitosamente`)
-    } catch (err) {
-      toast.error('Error al guardar imagen: ' + err.message)
-    } finally {
-      setDescargandoImg(false)
-    }
-  }
-
-  // ─── 4. Enviar WhatsApp ───────────────────────────────────────────────────
-  const handleEnviarWhatsapp = async (e) => {
-    e?.preventDefault()
-    const telLimpio = (telefonoWhatsapp || cliente?.telefono || '').replace(/\D/g, '')
-    if (!telLimpio || telLimpio.length < 7) {
-      toast.error('Ingresa un número de teléfono celular válido')
-      return
-    }
-    const telInternacional = telLimpio.length === 10 ? `57${telLimpio}` : telLimpio
-    const texto = encodeURIComponent(generarTextoResumen())
-    
-    // Auto-copiar imagen PNG para que el usuario solo tenga que dar Ctrl+V
-    try {
-      await copiarTicketComoImagen(ticketRef.current, factura.numero)
-      toast.success('📸 ¡Imagen copiada! Solo presiona Ctrl+V en el chat de WhatsApp.', { duration: 6000 })
-    } catch (ignore) {}
-
-    window.open(`https://wa.me/${telInternacional}?text=${texto}`, '_blank')
-    setWhatsappModal(false)
-  }
-
-  // ─── 5. Enviar por Correo Electrónico ─────────────────────────────────────
-  const handleEnviarEmail = async () => {
-    // Descargar PDF para que el usuario lo adjunte
-    try {
-      await descargarTicketComoPDF(ticketRef.current, factura.numero, formato)
-      toast.success(`📄 Factura ${factura.numero}.pdf descargada para adjuntar al correo`)
-    } catch (ignore) {}
-
-    const correo = cliente?.email || ''
-    const asunto = encodeURIComponent(`Factura de Venta ${factura.numero} - ${empresa?.nombre || 'FACTUR-AAP'}`)
-    const cuerpo = encodeURIComponent(generarTextoResumen().replace(/[*_]/g, '') + '\n\nAdjunto encontrarás el archivo PDF del comprobante oficial.')
-    window.open(`mailto:${correo}?subject=${asunto}&body=${cuerpo}`, '_self')
-  }
-
-  const handleImprimir = () => {
-    window.print()
   }
 
   return (
@@ -510,160 +571,204 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
           </div>
         </div>
 
-        {/* ── Footer con Botones de Acción ────────────────────────────── */}
+        {/* ── Footer con las 5 Acciones Priorizadas por Relevancia ──────────────── */}
         <div className="px-5 py-3.5 bg-dark-800 border-t border-dark-700 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Imprimir */}
+            {/* 1. IMPRIMIR - Botón Principal Predeterminado */}
             <button
               type="button"
               onClick={handleImprimir}
-              className="btn-primary py-2 px-3.5 text-xs font-bold flex items-center gap-1.5 shadow-lg hover:scale-105 transition-transform"
-              title="Lanza la impresión a tu impresora térmica o predeterminada"
+              className="btn-primary py-2.5 px-4 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-primary-950/60 hover:scale-105 transition-all"
+              title="1. Imprimir comprobante físico inmediatamente"
             >
-              <Printer size={15} />
+              <Printer size={16} />
               <span>🖨️ Imprimir</span>
             </button>
 
-            {/* Descargar PDF */}
+            {/* 2. WHATSAPP - Factura PDF como adjunto */}
             <button
               type="button"
-              onClick={handleDescargarPDF}
-              disabled={descargandoPdf}
-              className="py-2 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-              title="Descargar comprobante en archivo PDF oficial"
-            >
-              <FileText size={15} />
-              <span>{descargandoPdf ? 'Generando PDF...' : '📄 Descargar PDF'}</span>
-            </button>
-
-            {/* Copiar Imagen PNG */}
-            <button
-              type="button"
-              onClick={handleCopiarImagen}
-              disabled={copiandoImagen}
-              className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-              title="Copia la imagen .PNG directamente al portapapeles para pegarla en WhatsApp con Ctrl + V"
-            >
-              <ImageIcon size={15} />
-              <span>{copiandoImagen ? 'Capturando...' : '📸 Copiar Imagen (.PNG)'}</span>
-            </button>
-
-            {/* Descargar Imagen */}
-            <button
-              type="button"
-              onClick={handleDescargarImagen}
-              disabled={descargandoImg}
-              className="py-2 px-2.5 rounded-xl bg-dark-700 hover:bg-dark-600 text-dark-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50"
-              title="Guardar comprobante como archivo de imagen .PNG en tu equipo"
-            >
-              <Download size={14} />
-              <span>{descargandoImg ? 'Guardando...' : '🖼️ Guardar PNG'}</span>
-            </button>
-
-            {/* Enviar WhatsApp */}
-            <button
-              type="button"
-              onClick={() => setWhatsappModal(true)}
-              className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all"
-              title="Enviar comprobante por WhatsApp al cliente"
+              onClick={handleAbrirModalWhatsapp}
+              disabled={enviandoWhatsapp}
+              className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950/40 transition-all disabled:opacity-50"
+              title="2. Enviar comprobante PDF por WhatsApp"
             >
               <MessageSquare size={15} />
-              <span>📱 WhatsApp</span>
+              <span>{enviandoWhatsapp ? 'Generando PDF...' : '📱 WhatsApp'}</span>
             </button>
 
-            {/* Enviar Correo */}
+            {/* 3. CORREO - Factura PDF al correo del cliente */}
             <button
               type="button"
-              onClick={handleEnviarEmail}
-              className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all"
-              title="Descarga el PDF y abre el correo para enviar al cliente"
+              onClick={handleAbrirModalEmail}
+              disabled={guardandoEmail}
+              className="py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-950/40 transition-all disabled:opacity-50"
+              title="3. Enviar comprobante PDF al correo electrónico"
             >
               <Mail size={15} />
               <span>✉️ Correo</span>
             </button>
+
+            {/* 4. COPIAR - Copia imagen .PNG al portapapeles */}
+            <button
+              type="button"
+              onClick={handleCopiarImagen}
+              disabled={copiandoImagen}
+              className="py-2.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-950/40 transition-all disabled:opacity-50"
+              title="4. Copia la imagen .PNG al portapapeles para pegar con Ctrl + V"
+            >
+              <Copy size={15} />
+              <span>{copiandoImagen ? 'Copiando...' : '📋 Copiar (.PNG)'}</span>
+            </button>
+
+            {/* 5. DESCARGAR PDF - Última opción / discreto */}
+            <button
+              type="button"
+              onClick={handleDescargarPDF}
+              disabled={generandoPdf}
+              className="py-2 px-3 rounded-xl bg-dark-700 hover:bg-dark-600 border border-dark-600 text-dark-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+              title="5. Descargar archivo PDF local en el equipo"
+            >
+              <Download size={14} />
+              <span>{generandoPdf ? 'Descargando...' : '📄 Descargar PDF'}</span>
+            </button>
           </div>
 
+          {/* Siguiente Venta */}
           <button
             type="button"
             onClick={onCerrar}
-            className="btn-secondary py-2 px-5 text-xs font-bold bg-dark-700 hover:bg-primary-600 hover:text-white border-dark-600 transition-colors"
+            className="btn-secondary py-2.5 px-5 text-xs font-bold bg-dark-700 hover:bg-primary-600 hover:text-white border-dark-600 transition-colors"
           >
             ➕ Siguiente Venta
           </button>
         </div>
 
-        {/* ── Submodal WhatsApp Rápido ─────────────────────────────────── */}
+        {/* ── Submodal: Enviar por WhatsApp con PDF ────────────────────────── */}
         {whatsappModal && (
           <div className="fixed inset-0 bg-black/85 z-[100] flex items-center justify-center p-4">
-            <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-md w-full p-4 space-y-3 shadow-2xl animate-in zoom-in-95">
-              <div className="flex items-center justify-between border-b border-dark-700 pb-2">
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-dark-700 pb-2.5">
                 <h4 className="text-white font-bold text-sm flex items-center gap-2">
-                  <MessageSquare size={16} className="text-emerald-400" />
-                  Enviar Factura por WhatsApp
+                  <MessageSquare size={17} className="text-emerald-400" />
+                  Enviar Factura PDF por WhatsApp
                 </h4>
                 <button
                   type="button"
                   onClick={() => setWhatsappModal(false)}
-                  className="text-dark-400 hover:text-white"
+                  className="text-dark-400 hover:text-white p-1"
                 >
-                  <X size={16} />
+                  <X size={17} />
                 </button>
               </div>
 
-              <div className="space-y-3 text-xs">
+              <form onSubmit={handleEnviarWhatsapp} className="space-y-3.5 text-xs">
                 <div>
-                  <label className="block text-dark-300 mb-1 font-semibold">Número de Celular del Cliente:</label>
+                  <label className="block text-dark-300 mb-1 font-semibold uppercase tracking-wide">
+                    Número de Celular / WhatsApp del Cliente:
+                  </label>
                   <input
                     type="tel"
                     required
                     autoFocus
-                    className="input-field py-2 font-mono text-sm w-full"
-                    placeholder="Ej: 310 1234567"
+                    className="input-field py-2.5 font-mono text-sm w-full"
+                    placeholder="Ej: 3101234567"
                     value={telefonoWhatsapp}
                     onChange={e => setTelefonoWhatsapp(e.target.value)}
                   />
-                  <span className="text-[11px] text-dark-400 mt-1 block">
-                    Al hacer clic, la <strong>imagen (.PNG) de la factura se copiará automáticamente</strong> para que solo tengas que presionar <strong>Ctrl + V</strong> en el chat.
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleDescargarPDF}
-                    className="p-2 rounded-xl bg-dark-900 border border-dark-700 hover:border-red-500 text-dark-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors text-[11px]"
-                  >
-                    <FileText size={14} className="text-red-400" />
-                    <span>Descargar PDF</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCopiarImagen}
-                    className="p-2 rounded-xl bg-dark-900 border border-dark-700 hover:border-purple-500 text-dark-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors text-[11px]"
-                  >
-                    <ImageIcon size={14} className="text-purple-400" />
-                    <span>Copiar Imagen (.PNG)</span>
-                  </button>
+                  <p className="text-[11px] text-dark-400 mt-1.5 leading-relaxed">
+                    Al confirmar, el sistema genera la <strong>Factura oficial en formato PDF</strong> para enviarla adjunta al chat de WhatsApp del cliente.
+                  </p>
                 </div>
 
                 <div className="flex gap-2 pt-2 border-t border-dark-700">
                   <button
                     type="button"
                     onClick={() => setWhatsappModal(false)}
-                    className="btn-secondary flex-1 py-2 text-xs"
+                    className="btn-secondary flex-1 py-2.5 text-xs"
                   >
                     Cancelar
                   </button>
                   <button
-                    type="button"
-                    onClick={handleEnviarWhatsapp}
-                    className="btn-primary flex-1 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 border-emerald-500 shadow-md"
+                    type="submit"
+                    disabled={enviandoWhatsapp}
+                    className="btn-primary flex-1 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 border-emerald-500 shadow-md flex items-center justify-center gap-1.5"
                   >
-                    Abrir Chat WhatsApp
+                    <Send size={14} />
+                    <span>{enviandoWhatsapp ? 'Generando PDF...' : 'Enviar por WhatsApp'}</span>
                   </button>
                 </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── Submodal: Enviar por Correo con PDF y Actualización de Cliente ─ */}
+        {emailModal && (
+          <div className="fixed inset-0 bg-black/85 z-[100] flex items-center justify-center p-4">
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-dark-700 pb-2.5">
+                <h4 className="text-white font-bold text-sm flex items-center gap-2">
+                  <Mail size={17} className="text-blue-400" />
+                  Enviar Factura PDF por Correo
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setEmailModal(false)}
+                  className="text-dark-400 hover:text-white p-1"
+                >
+                  <X size={17} />
+                </button>
               </div>
+
+              <form onSubmit={handleEnviarEmailConfirmado} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block text-dark-300 mb-1 font-semibold uppercase tracking-wide">
+                    Correo Electrónico de Destino:
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    autoFocus
+                    className="input-field py-2.5 font-medium text-sm w-full"
+                    placeholder="cliente@ejemplo.com"
+                    value={emailDestino}
+                    onChange={e => setEmailDestino(e.target.value)}
+                  />
+                  <div className="mt-2 bg-dark-900/60 p-2.5 rounded-xl border border-dark-700 text-[11px] text-dark-400 space-y-1">
+                    {cliente?.id && cliente.id > 1 ? (
+                      <p className="text-blue-300">
+                        💾 <strong>Cliente Registrado:</strong> El correo se guardará automáticamente en su ficha para futuras facturas.
+                      </p>
+                    ) : (
+                      <p className="text-dark-300">
+                        ⚡ <strong>Cliente Mostrador:</strong> Se enviará la factura a este correo sin necesidad de crear un registro de cliente.
+                      </p>
+                    )}
+                    <p className="text-dark-400">
+                      Se generará y adjuntará el archivo <strong>Factura_{factura.numero}.pdf</strong> listo en tu cliente de correo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-dark-700">
+                  <button
+                    type="button"
+                    onClick={() => setEmailModal(false)}
+                    className="btn-secondary flex-1 py-2.5 text-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={guardandoEmail}
+                    className="btn-primary flex-1 py-2.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 border-blue-500 shadow-md flex items-center justify-center gap-1.5"
+                  >
+                    <Send size={14} />
+                    <span>{guardandoEmail ? 'Procesando...' : 'Enviar Correo con PDF'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

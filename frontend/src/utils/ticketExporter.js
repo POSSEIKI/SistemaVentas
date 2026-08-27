@@ -1,9 +1,11 @@
 ﻿/**
  * Utilidad Universal de Exportación de Facturas y Tiquetes POS
  * Soporta:
- * 1. Copiar Factura como Imagen (.PNG) directamente al portapapeles (para pegar con Ctrl + V en WhatsApp)
- * 2. Descargar Factura como Imagen (.PNG / .JPG)
- * 3. Descargar Factura como PDF (.PDF) en medidas exactas (58mm, 80mm o Carta)
+ * 1. Imprimir
+ * 2. Enviar Factura PDF por WhatsApp (como documento adjunto / File)
+ * 3. Enviar Factura PDF por Correo Electrónico
+ * 4. Copiar Factura como Imagen (.PNG) al portapapeles
+ * 5. Descargar Factura como PDF (.PDF)
  */
 
 // Cargador asíncrono dinámico de librerías vía CDN de alta velocidad
@@ -38,6 +40,50 @@ async function getJsPDF() {
 }
 
 /**
+ * Genera el documento PDF como un objeto File / Blob utilizable para adjuntar
+ */
+export async function generarTicketPDFFile(elemento, numeroFactura = 'POS', formatoPapel = '80MM') {
+  if (!elemento) throw new Error('No se encontró el elemento del comprobante.')
+
+  const html2canvas = await getHtml2Canvas()
+  const jsPDF = await getJsPDF()
+
+  const canvas = await html2canvas(elemento, {
+    scale: 2.5,
+    useCORS: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+  })
+
+  const imgData = canvas.toDataURL('image/png')
+  const imgWidth = canvas.width
+  const imgHeight = canvas.height
+
+  let pdf
+  if (formatoPapel === 'CARTA') {
+    pdf = new jsPDF('p', 'mm', 'letter')
+    const pdfWidth = pdf.internal.pageSize.getWidth()
+    const pdfHeight = (imgHeight * pdfWidth) / imgWidth
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+  } else {
+    const mmWidth = formatoPapel === '58MM' ? 58 : 80
+    const mmHeight = Math.max(80, Math.round((imgHeight * mmWidth) / imgWidth))
+    pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: [mmWidth, mmHeight],
+    })
+    pdf.addImage(imgData, 'PNG', 0, 0, mmWidth, mmHeight)
+  }
+
+  const blob = pdf.output('blob')
+  const filename = `Factura_${numeroFactura}.pdf`
+  const file = new File([blob], filename, { type: 'application/pdf' })
+
+  return { blob, file, filename, pdf }
+}
+
+/**
  * Copia el elemento del ticket como imagen PNG al portapapeles
  */
 export async function copiarTicketComoImagen(elemento, numeroFactura = 'POS') {
@@ -45,7 +91,7 @@ export async function copiarTicketComoImagen(elemento, numeroFactura = 'POS') {
 
   const html2canvas = await getHtml2Canvas()
   const canvas = await html2canvas(elemento, {
-    scale: 2.5, // Alta resolución para nitidez perfecta en WhatsApp
+    scale: 2.5,
     useCORS: true,
     backgroundColor: '#ffffff',
     logging: false,
@@ -76,74 +122,11 @@ export async function copiarTicketComoImagen(elemento, numeroFactura = 'POS') {
 }
 
 /**
- * Descarga el elemento del ticket como imagen PNG o JPG
- */
-export async function descargarTicketComoImagen(elemento, numeroFactura = 'POS', formato = 'png') {
-  if (!elemento) throw new Error('No se encontró el elemento del comprobante.')
-
-  const html2canvas = await getHtml2Canvas()
-  const canvas = await html2canvas(elemento, {
-    scale: 2.5,
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-  })
-
-  const mime = formato === 'jpg' || formato === 'jpeg' ? 'image/jpeg' : 'image/png'
-  const ext = formato === 'jpg' || formato === 'jpeg' ? 'jpg' : 'png'
-
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        descargarBlob(blob, `Factura_${numeroFactura}.${ext}`)
-        resolve(true)
-      }
-    }, mime, 0.95)
-  })
-}
-
-/**
- * Descarga el elemento del ticket como archivo PDF con tamaño exacto
+ * Descarga el elemento del ticket como archivo PDF
  */
 export async function descargarTicketComoPDF(elemento, numeroFactura = 'POS', formatoPapel = '80MM') {
-  if (!elemento) throw new Error('No se encontró el elemento del comprobante.')
-
-  const html2canvas = await getHtml2Canvas()
-  const jsPDF = await getJsPDF()
-
-  const canvas = await html2canvas(elemento, {
-    scale: 2.5,
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-  })
-
-  const imgData = canvas.toDataURL('image/png')
-  const imgWidth = canvas.width
-  const imgHeight = canvas.height
-
-  if (formatoPapel === 'CARTA') {
-    // Formato Carta Estándar (216mm x 279mm)
-    const pdf = new jsPDF('p', 'mm', 'letter')
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const pdfHeight = (imgHeight * pdfWidth) / imgWidth
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-    pdf.save(`Factura_${numeroFactura}.pdf`)
-  } else {
-    // Formato Térmico Rollo Continuo (58mm o 80mm con altura dinámica exacta)
-    const mmWidth = formatoPapel === '58MM' ? 58 : 80
-    const mmHeight = Math.max(80, Math.round((imgHeight * mmWidth) / imgWidth))
-
-    const pdf = new jsPDF({
-      orientation: 'p',
-      unit: 'mm',
-      format: [mmWidth, mmHeight],
-    })
-
-    pdf.addImage(imgData, 'PNG', 0, 0, mmWidth, mmHeight)
-    pdf.save(`Factura_${numeroFactura}.pdf`)
-  }
-
+  const { pdf, filename } = await generarTicketPDFFile(elemento, numeroFactura, formatoPapel)
+  pdf.save(filename)
   return true
 }
 
