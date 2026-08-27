@@ -485,7 +485,30 @@ async def analizar_factura_compra_excel(
             prods_by_barcode[_normalizar(p.codigo_barras_unidad)] = p
     prods_by_nombre = {_normalizar(p.nombre): p for p in productos if p.nombre}
 
-    def _smart_parse_num(val, is_price=True, default=0.0):
+    def _detectar_dialecto_numerico_texto(texto: str) -> str:
+        """
+        Analiza si el documento/bloque usa:
+        - 'LATIN': Punto para miles (100.000, 15.790) y Coma para decimales (100.000,00, 6,3331)
+        - 'ANGLO': Coma para miles (100,000.00) y Punto para decimales (6.3331)
+        """
+        has_latin_both = bool(re.search(r'\b\d{1,3}(?:\.\d{3})+,\d{1,4}\b', texto))
+        has_anglo_both = bool(re.search(r'\b\d{1,3}(?:,\d{3})+\.\d{1,4}\b', texto))
+        if has_latin_both:
+            return "LATIN"
+        if has_anglo_both:
+            return "ANGLO"
+        
+        comas_dec = len(re.findall(r'\b\d+,\d{1,4}\b', texto))
+        puntos_miles = len(re.findall(r'\b\d{1,3}\.\d{3}(?:\.\d{3})*\b', texto))
+        puntos_dec = len(re.findall(r'\b\d+\.\d{1,2}\b', texto))
+        
+        if comas_dec > 0 or puntos_miles > 0:
+            return "LATIN"
+        elif puntos_dec > 0 and comas_dec == 0:
+            return "ANGLO"
+        return "LATIN"
+
+    def _smart_parse_num(val, is_price=True, default=0.0, dialecto="LATIN"):
         if val is None:
             return default
         if isinstance(val, (int, float)):
@@ -503,10 +526,10 @@ async def analizar_factura_compra_excel(
             last_dot = s.rfind(".")
             last_comma = s.rfind(",")
             if last_comma > last_dot:
-                # 1.250.000,50 o 12.500,00 (punto miles, coma decimal)
+                # 100.000,00 o 12.500,50 -> Punto miles, Coma decimal
                 s_clean = s[:last_comma].replace(".", "").replace(",", "") + "." + s[last_comma+1:]
             else:
-                # 1,250,000.50 o 12,500.00 (coma miles, punto decimal)
+                # 100,000.00 o 12,500.50 -> Coma miles, Punto decimal
                 s_clean = s[:last_dot].replace(",", "").replace(".", "") + "." + s[last_dot+1:]
 
         # Caso 2: Solo contiene comas
@@ -516,25 +539,30 @@ async def analizar_factura_compra_excel(
                 # 1,250,000
                 s_clean = s.replace(",", "")
             else:
-                # 12,500 vs 12,50 vs 12,5
                 decimal_part = partes[1]
-                if len(decimal_part) == 3 and is_price and int(partes[0]) > 0:
+                if dialecto == "ANGLO" and len(decimal_part) == 3 and is_price and int(partes[0]) > 0:
                     s_clean = s.replace(",", "")
                 else:
+                    # 6,3331 o 100000,00 -> Coma decimal
                     s_clean = partes[0] + "." + decimal_part
 
         # Caso 3: Solo contiene puntos
         elif "." in s:
             partes = s.split(".")
             if len(partes) > 2:
-                # 1.250.000
+                # 1.250.000 -> Miles
                 s_clean = s.replace(".", "")
             else:
-                # 12.500 vs 12.50 vs 12.5
                 decimal_part = partes[1]
-                if len(decimal_part) == 3 and is_price and int(partes[0]) > 0:
-                    s_clean = s.replace(".", "")
+                # Si tiene exactamente 3 digitos en la parte decimal:
+                # ej 100.000, 15.790, 24.900, 71.700 -> Miles en Colombia
+                if len(decimal_part) == 3:
+                    if is_price or float(partes[0]) > 50:
+                        s_clean = s.replace(".", "")
+                    else:
+                        s_clean = s
                 else:
+                    # ej '15790.0', '24900.0', '6.139', '100.0' -> Float estándar
                     s_clean = s
         else:
             s_clean = s
@@ -669,22 +697,22 @@ async def analizar_factura_compra_excel(
         try:
             import pdfplumber
 
-            def _calibrar_triplete_universal(num_vals_list):
+            def _calibrar_triplete_universal(num_vals_list, dialecto="LATIN"):
                 mejores = []
                 for i_tot, tot_c in enumerate(num_vals_list):
-                    tot_v = _smart_parse_num(tot_c, is_price=True, default=0.0)
+                    tot_v = _smart_parse_num(tot_c, is_price=True, default=0.0, dialecto=dialecto)
                     if tot_v <= 0 or tot_v > 500000000:
                         continue
                     for i_cant, cant_c in enumerate(num_vals_list):
                         if i_cant == i_tot:
                             continue
-                        cant_v = _smart_parse_num(cant_c, is_price=False, default=1.0)
+                        cant_v = _smart_parse_num(cant_c, is_price=False, default=1.0, dialecto=dialecto)
                         if cant_v <= 0 or cant_v > 1000000:
                             continue
                         for i_p, p_c in enumerate(num_vals_list):
                             if i_p in [i_tot, i_cant]:
                                 continue
-                            p_v = _smart_parse_num(p_c, is_price=True, default=0.0)
+                            p_v = _smart_parse_num(p_c, is_price=True, default=0.0, dialecto=dialecto)
                             if p_v <= 0 or p_v > 500000000:
                                 continue
                             diff = abs(cant_v * p_v - tot_v)
@@ -708,6 +736,7 @@ async def analizar_factura_compra_excel(
                     t = page.extract_text() or ""
                     texto_completo += t + "\n"
 
+                dialecto_doc = _detectar_dialecto_numerico_texto(texto_completo)
                 lineas_pdf = [l.strip() for l in texto_completo.splitlines() if l.strip()]
 
                 # 1. Metadatos de Cabecera Universales (Bloque 1)
@@ -1565,7 +1594,8 @@ async def analizar_factura_compra_excel(
         if not nombre_raw and not codigo_raw and not barras_raw:
             continue
 
-        cantidad = max(1.0, _smart_parse_num(_get("cantidad", 1), is_price=False, default=1.0))
+        cant_val_raw = _smart_parse_num(_get("cantidad", 1), is_price=False, default=1.0)
+        cantidad = cant_val_raw if cant_val_raw > 0 else 1.0
         costo_unit = _smart_parse_num(_get("costo_unitario", 0), is_price=True, default=0.0)
         iva_pct = _smart_parse_num(_get("iva_porcentaje", 0), is_price=False, default=0.0)
         precio_sug_excel = _smart_parse_num(_get("precio_sugerido", None), is_price=True, default=None)
