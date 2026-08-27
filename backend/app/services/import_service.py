@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import List, Dict, Any, Tuple
 import openpyxl
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.models.producto import Producto, Categoria, UnidadMedida
