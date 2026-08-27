@@ -22,10 +22,15 @@ export class ErrorBoundary extends React.Component {
             <div className="w-12 h-12 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-4 font-bold text-xl">
               !
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">Ocurrió un inconveniente temporal</h2>
-            <p className="text-xs text-slate-400 mb-6">
-              Hemos detectado un detalle al cargar la vista. Puedes recargar la página o volver al inicio.
+            <h2 className="text-xl font-bold text-white mb-2">Ocurrió un inconveniente al cargar la vista</h2>
+            <p className="text-xs text-slate-400 mb-4">
+              {this.state.error?.message || 'Error desconocido'}
             </p>
+            {this.state.error?.stack && (
+              <pre className="text-[10px] text-left text-red-300/80 bg-slate-950 p-3 rounded-xl mb-4 overflow-auto max-h-32 font-mono">
+                {this.state.error.stack}
+              </pre>
+            )}
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => window.location.href = '/'}
