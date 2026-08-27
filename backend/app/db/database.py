@@ -78,6 +78,20 @@ async def init_db() -> None:
                         r = await session.execute(select(Categoria).where(Categoria.nombre == nom))
                         if not r.scalar_one_or_none():
                             session.add(Categoria(nombre=nom, activo=True))
+
+                    from app.models.cliente import Cliente
+                    r_c1 = await session.execute(select(Cliente).where(Cliente.id == 1))
+                    if not r_c1.scalar_one_or_none():
+                        session.add(Cliente(
+                            id=1,
+                            nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
+                            nit='222222222222',
+                            tipo_doc='CC',
+                            direccion='Mostrador',
+                            telefono='0000000',
+                            email='',
+                            activo=True
+                        ))
                     
                     await session.commit()
             except Exception as e_seed:
