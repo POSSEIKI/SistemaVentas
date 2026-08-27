@@ -53,15 +53,42 @@ async def init_db() -> None:
                 from sqlalchemy import text
                 await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL;"))
             
-            # Inicializar planes por defecto si no existen
+            # Inicializar planes, unidades de medida y categorias por defecto
             try:
                 from app.services.suscripcion_service import inicializar_planes_predeterminados
+                from app.models.producto import UnidadMedida, Categoria
+                from sqlalchemy import select
+
+                UNIDADES_DEF = [
+                    ('Unidad', 'UND'), ('Caja', 'CJ'), ('Blíster', 'BL'), ('Frasco', 'FR'),
+                    ('Ampolla', 'AMP'), ('Tubo', 'TB'), ('Sobre', 'SB'), ('Paquete', 'PQ'),
+                    ('Litro', 'LT'), ('Kilo', 'KG'), ('Metro', 'MT'), ('Par', 'PR')
+                ]
+                CATEGORIAS_DEF = [
+                    'General', 'Medicamentos', 'Analgésicos y Antiinflamatorios',
+                    'Antibióticos', 'Vitaminas y Suplementos', 'Cuidado Personal y Aseo',
+                    'Dispositivos Médicos', 'Ferretería', 'Herramientas', 'Construcción',
+                    'Eléctricos', 'Tornillería y Fijaciones', 'Pinturas y Químicos', 'Plomería'
+                ]
+
                 async with AsyncSessionLocal() as session:
                     await inicializar_planes_predeterminados(session)
-            except Exception as e_seed:
-                logger.warning(f"No se pudieron precargar los planes: {e_seed}")
+                    
+                    for nom, abrv in UNIDADES_DEF:
+                        r = await session.execute(select(UnidadMedida).where(UnidadMedida.nombre == nom))
+                        if not r.scalar_one_or_none():
+                            session.add(UnidadMedida(nombre=nom, abreviatura=abrv, activo=True))
 
-            logger.info("Base de datos inicializada con tablas y planes")
+                    for nom in CATEGORIAS_DEF:
+                        r = await session.execute(select(Categoria).where(Categoria.nombre == nom))
+                        if not r.scalar_one_or_none():
+                            session.add(Categoria(nombre=nom, activo=True))
+                    
+                    await session.commit()
+            except Exception as e_seed:
+                logger.warning(f"No se pudieron precargar datos maestros: {e_seed}")
+
+            logger.info("Base de datos inicializada con tablas, planes, unidades y categorias")
             return
         except Exception as e:
             logger.warning(f"Intento {attempt}/{max_retries} conectando a la BD falló ({e}). Reintentando en 1.5s...")

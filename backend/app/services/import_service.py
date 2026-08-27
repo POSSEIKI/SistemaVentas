@@ -98,11 +98,25 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
     # 2. Cargar categorías existentes y auto-crear las que falten
     res_cats = await db.execute(select(Categoria))
     categorias_map = {_normalizar_texto(c.nombre): c.id for c in res_cats.scalars().all()}
+    if not categorias_map:
+        cat_def = Categoria(nombre="General", activo=True)
+        db.add(cat_def)
+        await db.commit()
+        await db.refresh(cat_def)
+        categorias_map["general"] = cat_def.id
 
-    # Obtener ID de unidad por defecto
-    res_und = await db.execute(select(UnidadMedida).where(UnidadMedida.nombre == 'Unidad'))
-    und_obj = res_und.scalar_one_or_none()
-    default_und_id = und_obj.id if und_obj else 1
+    # Obtener o crear Unidad de Medida por defecto con ID real
+    res_und = await db.execute(select(UnidadMedida).order_by(UnidadMedida.id))
+    und_objs = res_und.scalars().all()
+    if not und_objs:
+        und_def = UnidadMedida(nombre="Unidad", abreviatura="UND", activo=True)
+        db.add(und_def)
+        await db.commit()
+        await db.refresh(und_def)
+        default_und_id = und_def.id
+    else:
+        und_match = next((u for u in und_objs if _normalizar_texto(u.nombre) == "unidad"), und_objs[0])
+        default_und_id = und_match.id
 
     # Extraer categorías únicas del archivo
     nuevas_cats = set()
