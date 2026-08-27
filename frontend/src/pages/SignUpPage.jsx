@@ -252,7 +252,7 @@ export default function SignUpPage() {
                 Tipo de Negocio / Rubro
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {RUBROS.map((r) => {
+                {(Array.isArray(RUBROS) ? RUBROS : []).map((r) => {
                   const Icon = r.icon
                   const selected = formData.rubro === r.id
                   return (

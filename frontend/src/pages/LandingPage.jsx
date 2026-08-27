@@ -431,7 +431,7 @@ export default function LandingPage() {
 
           {/* Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
-            {planes.map((plan) => {
+            {(Array.isArray(planes) && planes.length > 0 ? planes : DEFAULT_PLANES).map((plan) => {
               const precio = periodoAnual ? Number(plan.precio_anual || 0) / 12 : Number(plan.precio_mensual || 0)
               let itemsCaract = []
               try {
@@ -482,7 +482,7 @@ export default function LandingPage() {
                     </div>
 
                     <ul className="space-y-3 text-sm text-slate-300">
-                      {itemsCaract.map((c, i) => (
+                      {(Array.isArray(itemsCaract) ? itemsCaract : []).map((c, i) => (
                         <li key={i} className="flex items-start gap-2.5">
                           <Check size={16} className="text-emerald-400 flex-shrink-0 mt-0.5" />
                           <span>{c}</span>
@@ -522,7 +522,7 @@ export default function LandingPage() {
           </div>
 
           <div className="space-y-4">
-            {faqs.map((f, i) => {
+            {(Array.isArray(faqs) ? faqs : []).map((f, i) => {
               const isOpen = faqAbierta === i
               return (
                 <div
