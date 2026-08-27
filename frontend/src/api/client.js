@@ -1,13 +1,26 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/authStore'
 
-let rawBase = (import.meta.env.VITE_API_URL || '/api/v1').trim()
+const PRODUCTION_API_URL = 'https://factur-aap-api.onrender.com/api/v1'
+
+let rawBase = (import.meta.env.VITE_API_URL || '').trim()
+
+// Si estamos en producción (en Vercel o en cualquier dominio web), apuntar directamente a Render
+if (!rawBase || rawBase === '/api/v1') {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    rawBase = PRODUCTION_API_URL
+  } else {
+    rawBase = '/api/v1'
+  }
+}
+
 if (rawBase.startsWith('http') && !rawBase.includes('/api/v1')) {
   rawBase = rawBase.replace(/\/+$/, '') + '/api/v1'
 }
+
 const BASE_URL = rawBase
 
-const api = axios.create({ baseURL: BASE_URL, timeout: 120000 })
+const api = axios.create({ baseURL: BASE_URL, timeout: 90000 })
 
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
@@ -22,7 +35,7 @@ api.interceptors.response.use(
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }
-    const msg = error.response?.data?.detail || error.message || 'Error de conexión'
+    const msg = error.response?.data?.detail || error.message || 'Error de conexión con el servidor'
     return Promise.reject(new Error(msg))
   }
 )
