@@ -450,25 +450,54 @@ export default function ComprasPage() {
 
   const handleSeleccionarProductoDestino = (p) => {
     const factorNum = Math.max(1, parseInt(modalConvertidor?.factor) || 1)
-    let costoUnit = 0
+    let costoFacturaUnit = 0
     if (modalConvertidor?.modo === 'OBSEQUIO') {
-      costoUnit = modalConvertidor?.costoTratamiento === 'CERO' ? 0 : parseFloat(p.precio_costo || 0)
+      costoFacturaUnit = modalConvertidor?.costoTratamiento === 'CERO' ? 0 : parseFloat(p.precio_costo || 0)
     } else {
-      costoUnit = factorNum > 0 ? (modalConvertidor.linea.costo_unitario / factorNum) : modalConvertidor.linea.costo_unitario
-      costoUnit = Math.round(costoUnit * 100) / 100
+      costoFacturaUnit = factorNum > 0 ? (modalConvertidor.linea.costo_unitario / factorNum) : modalConvertidor.linea.costo_unitario
+      costoFacturaUnit = Math.round(costoFacturaUnit * 100) / 100
     }
+
+    const stockAnt = parseFloat(p.stock_actual || 0)
+    const costoAnt = parseFloat(p.precio_costo || 0)
+    const cantNueva = modalConvertidor.linea.cantidad * factorNum
+
+    let cpp = costoFacturaUnit
+    let costoMax = costoFacturaUnit
+    let costoUlt = costoFacturaUnit
+    let cambioCosto = false
+
+    if (stockAnt > 0 && costoAnt > 0 && costoFacturaUnit > 0) {
+      cpp = Math.round((((stockAnt * costoAnt) + (cantNueva * costoFacturaUnit)) / (stockAnt + cantNueva)) * 100) / 100
+      costoMax = Math.max(costoAnt, costoFacturaUnit)
+      cambioCosto = Math.abs(costoFacturaUnit - costoAnt) > 0.01
+    }
+
+    const estrategia = modalConvertidor?.estrategiaCosto || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO'
+    const costoEfectivo = estrategia === 'PROMEDIO_PONDERADO'
+      ? cpp
+      : estrategia === 'COSTO_MAS_ALTO'
+      ? costoMax
+      : costoUlt
 
     let pVenta = parseFloat(p.precio_venta || 0)
     let margen = parseFloat(p.porcentaje_ganancia || margenPredeterminado)
-    if (pVenta <= 0 && costoUnit > 0) {
-      pVenta = calcularPrecioDesdeCosto(costoUnit, margen, modoRedondeo)
-    } else if (pVenta > 0 && costoUnit > 0) {
-      margen = calcularMargenDesdePrecio(costoUnit, pVenta)
+    if (pVenta <= 0 && costoEfectivo > 0) {
+      pVenta = calcularPrecioDesdeCosto(costoEfectivo, margen, modoRedondeo)
+    } else if (pVenta > 0 && costoEfectivo > 0) {
+      margen = calcularMargenDesdePrecio(costoEfectivo, pVenta)
     }
 
     setModalConvertidor(prev => ({
       ...prev,
       productoDestino: p,
+      costoFacturaUnit,
+      costoPromedioPonderado: cpp,
+      costoMasAlto: costoMax,
+      costoUltimo: costoUlt,
+      estrategiaCosto: estrategia,
+      costoEfectivo,
+      cambioCostoDetectado: cambioCosto,
       precioVentaPersonalizado: pVenta,
       margenPersonalizado: margen,
     }))
@@ -476,16 +505,9 @@ export default function ComprasPage() {
 
   const handleCambioPrecioModalConvertidor = (nuevoPrecioStr) => {
     const pVenta = Math.max(0, parseFloat(nuevoPrecioStr) || 0)
-    const factorNum = Math.max(1, parseInt(modalConvertidor?.factor) || 1)
-    let costoUnit = 0
-    if (modalConvertidor?.modo === 'OBSEQUIO') {
-      costoUnit = modalConvertidor?.costoTratamiento === 'CERO' ? 0 : parseFloat(modalConvertidor?.productoDestino?.precio_costo || 0)
-    } else {
-      costoUnit = factorNum > 0 ? (modalConvertidor.linea.costo_unitario / factorNum) : modalConvertidor.linea.costo_unitario
-      costoUnit = Math.round(costoUnit * 100) / 100
-    }
+    const costoActual = modalConvertidor?.costoEfectivo || modalConvertidor?.costoFacturaUnit || 0
+    const nuevoMargen = costoActual > 0 ? calcularMargenDesdePrecio(costoActual, pVenta) : 100
 
-    const nuevoMargen = costoUnit > 0 ? calcularMargenDesdePrecio(costoUnit, pVenta) : 100
     setModalConvertidor(prev => ({
       ...prev,
       precioVentaPersonalizado: pVenta,
@@ -495,17 +517,9 @@ export default function ComprasPage() {
 
   const handleCambioMargenModalConvertidor = (nuevoMargenStr) => {
     const margen = parseFloat(nuevoMargenStr) || 0
-    const factorNum = Math.max(1, parseInt(modalConvertidor?.factor) || 1)
-    let costoUnit = 0
-    if (modalConvertidor?.modo === 'OBSEQUIO') {
-      costoUnit = modalConvertidor?.costoTratamiento === 'CERO' ? 0 : parseFloat(modalConvertidor?.productoDestino?.precio_costo || 0)
-    } else {
-      costoUnit = factorNum > 0 ? (modalConvertidor.linea.costo_unitario / factorNum) : modalConvertidor.linea.costo_unitario
-      costoUnit = Math.round(costoUnit * 100) / 100
-    }
-
-    const nuevoPrecio = costoUnit > 0
-      ? calcularPrecioDesdeCosto(costoUnit, margen, modoRedondeo)
+    const costoActual = modalConvertidor?.costoEfectivo || modalConvertidor?.costoFacturaUnit || 0
+    const nuevoPrecio = costoActual > 0
+      ? calcularPrecioDesdeCosto(costoActual, margen, modoRedondeo)
       : (modalConvertidor?.precioVentaPersonalizado || 0)
 
     setModalConvertidor(prev => ({
@@ -515,28 +529,76 @@ export default function ComprasPage() {
     }))
   }
 
+  const handleCambioEstrategiaModalConvertidor = (nuevaEstrategia) => {
+    setModalConvertidor(prev => {
+      if (!prev?.productoDestino) return prev
+      const cpp = prev.costoPromedioPonderado || prev.costoFacturaUnit || 0
+      const costoMax = prev.costoMasAlto || prev.costoFacturaUnit || 0
+      const costoUlt = prev.costoUltimo || prev.costoFacturaUnit || 0
+
+      const nuevoCosto = nuevaEstrategia === 'PROMEDIO_PONDERADO'
+        ? cpp
+        : nuevaEstrategia === 'COSTO_MAS_ALTO'
+        ? costoMax
+        : costoUlt
+
+      const margen = prev.margenPersonalizado !== null ? prev.margenPersonalizado : margenPredeterminado
+      const nuevoPrecio = nuevoCosto > 0
+        ? calcularPrecioDesdeCosto(nuevoCosto, margen, modoRedondeo)
+        : prev.precioVentaPersonalizado
+
+      return {
+        ...prev,
+        estrategiaCosto: nuevaEstrategia,
+        costoEfectivo: nuevoCosto,
+        precioVentaPersonalizado: nuevoPrecio,
+      }
+    })
+  }
+
   const handleCambioModoOParametros = (actualizaciones) => {
     setModalConvertidor(prev => {
       const nuevo = { ...prev, ...actualizaciones }
       if (nuevo.productoDestino) {
         const factorNum = Math.max(1, parseInt(nuevo.factor) || 1)
-        let costoUnit = 0
+        let costoFacturaUnit = 0
         if (nuevo.modo === 'OBSEQUIO') {
-          costoUnit = nuevo.costoTratamiento === 'CERO' ? 0 : parseFloat(nuevo.productoDestino.precio_costo || 0)
+          costoFacturaUnit = nuevo.costoTratamiento === 'CERO' ? 0 : parseFloat(nuevo.productoDestino.precio_costo || 0)
         } else {
-          costoUnit = factorNum > 0 ? (nuevo.linea.costo_unitario / factorNum) : nuevo.linea.costo_unitario
-          costoUnit = Math.round(costoUnit * 100) / 100
+          costoFacturaUnit = factorNum > 0 ? (nuevo.linea.costo_unitario / factorNum) : nuevo.linea.costo_unitario
+          costoFacturaUnit = Math.round(costoFacturaUnit * 100) / 100
         }
+
+        const stockAnt = parseFloat(nuevo.productoDestino.stock_actual || 0)
+        const costoAnt = parseFloat(nuevo.productoDestino.precio_costo || 0)
+        const cantNueva = nuevo.linea.cantidad * factorNum
+
+        let cpp = costoFacturaUnit
+        let costoMax = costoFacturaUnit
+        let costoUlt = costoFacturaUnit
+
+        if (stockAnt > 0 && costoAnt > 0 && costoFacturaUnit > 0) {
+          cpp = Math.round((((stockAnt * costoAnt) + (cantNueva * costoFacturaUnit)) / (stockAnt + cantNueva)) * 100) / 100
+          costoMax = Math.max(costoAnt, costoFacturaUnit)
+        }
+
+        const estrategia = nuevo.estrategiaCosto || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO'
+        const costoEfectivo = estrategia === 'PROMEDIO_PONDERADO' ? cpp : estrategia === 'COSTO_MAS_ALTO' ? costoMax : costoUlt
 
         let pVenta = nuevo.precioVentaPersonalizado !== null ? nuevo.precioVentaPersonalizado : parseFloat(nuevo.productoDestino.precio_venta || 0)
         let margen = nuevo.margenPersonalizado !== null ? nuevo.margenPersonalizado : parseFloat(nuevo.productoDestino.porcentaje_ganancia || margenPredeterminado)
 
-        if (pVenta <= 0 && costoUnit > 0) {
-          pVenta = calcularPrecioDesdeCosto(costoUnit, margen, modoRedondeo)
-        } else if (pVenta > 0 && costoUnit > 0) {
-          margen = calcularMargenDesdePrecio(costoUnit, pVenta)
+        if (pVenta <= 0 && costoEfectivo > 0) {
+          pVenta = calcularPrecioDesdeCosto(costoEfectivo, margen, modoRedondeo)
+        } else if (pVenta > 0 && costoEfectivo > 0) {
+          margen = calcularMargenDesdePrecio(costoEfectivo, pVenta)
         }
 
+        nuevo.costoFacturaUnit = costoFacturaUnit
+        nuevo.costoPromedioPonderado = cpp
+        nuevo.costoMasAlto = costoMax
+        nuevo.costoUltimo = costoUlt
+        nuevo.costoEfectivo = costoEfectivo
         nuevo.precioVentaPersonalizado = pVenta
         nuevo.margenPersonalizado = margen
       }
@@ -551,22 +613,42 @@ export default function ComprasPage() {
     }
     const {
       linea, modo, factor, productoDestino,
-      costoTratamiento, precioVentaPersonalizado, margenPersonalizado
+      costoTratamiento, precioVentaPersonalizado, margenPersonalizado,
+      costoPromedioPonderado, costoMasAlto, costoUltimo, estrategiaCosto, costoEfectivo,
+      costoFacturaUnit
     } = modalConvertidor
 
     const factorNum = Math.max(1, parseInt(factor) || 1)
+    const stockAnt = parseFloat(productoDestino.stock_actual || 0)
+    const costoAnt = parseFloat(productoDestino.precio_costo || 0)
 
     let nuevaCantidad = linea.cantidad
-    let nuevoCosto = linea.costo_unitario
+    let costoFactura = linea.costo_unitario
 
     if (modo === 'OBSEQUIO') {
       nuevaCantidad = linea.cantidad
-      nuevoCosto = costoTratamiento === 'CERO' ? 0 : parseFloat(productoDestino.precio_costo || 0)
+      costoFactura = costoTratamiento === 'CERO' ? 0 : costoAnt
     } else if (modo === 'DESEMPACAR_PACK') {
       nuevaCantidad = linea.cantidad * factorNum
-      nuevoCosto = factorNum > 0 ? (linea.costo_unitario / factorNum) : linea.costo_unitario
-      nuevoCosto = Math.round(nuevoCosto * 100) / 100
+      costoFactura = factorNum > 0 ? (linea.costo_unitario / factorNum) : linea.costo_unitario
+      costoFactura = Math.round(costoFactura * 100) / 100
     }
+
+    let cpp = costoFactura
+    let costoMax = costoFactura
+    let costoUlt = costoFactura
+    let cambioCosto = false
+
+    if (stockAnt > 0 && costoAnt > 0 && costoFactura > 0) {
+      cpp = Math.round((((stockAnt * costoAnt) + (nuevaCantidad * costoFactura)) / (stockAnt + nuevaCantidad)) * 100) / 100
+      costoMax = Math.max(costoAnt, costoFactura)
+      cambioCosto = Math.abs(costoFactura - costoAnt) > 0.01
+    }
+
+    const estrategiaActiva = estrategiaCosto || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO'
+    const costoFinalLinea = costoEfectivo || (
+      estrategiaActiva === 'PROMEDIO_PONDERADO' ? cpp : estrategiaActiva === 'COSTO_MAS_ALTO' ? costoMax : costoUlt
+    )
 
     const nuevoPrecioVenta = (precioVentaPersonalizado !== undefined && precioVentaPersonalizado !== null)
       ? parseFloat(precioVentaPersonalizado)
@@ -574,7 +656,7 @@ export default function ComprasPage() {
 
     const nuevoMargen = (margenPersonalizado !== undefined && margenPersonalizado !== null)
       ? parseFloat(margenPersonalizado)
-      : (nuevoCosto > 0 ? calcularMargenDesdePrecio(nuevoCosto, nuevoPrecioVenta) : margenPredeterminado)
+      : (costoFinalLinea > 0 ? calcularMargenDesdePrecio(costoFinalLinea, nuevoPrecioVenta) : margenPredeterminado)
 
     // Actualizar la línea en el listado de compra
     setLineas(prev => prev.map(l => {
@@ -591,7 +673,15 @@ export default function ComprasPage() {
           principio_activo: productoDestino.principio_activo || '',
           laboratorio: productoDestino.laboratorio || '',
           cantidad: nuevaCantidad,
-          costo_unitario: nuevoCosto,
+          costo_unitario: costoFinalLinea,
+          costo_factura: costoFactura,
+          costo_anterior_bd: stockAnt > 0 ? costoAnt : 0,
+          costo_promedio_ponderado: cpp,
+          costo_mas_alto: costoMax,
+          costo_ultimo: costoUlt,
+          stock_actual_bd: stockAnt,
+          estrategia_costo: estrategiaActiva,
+          cambio_costo_detectado: cambioCosto,
           precio_sugerido: nuevoPrecioVenta,
           porcentaje_ganancia: nuevoMargen,
           maneja_fracciones: productoDestino.maneja_fracciones || false,
@@ -609,7 +699,7 @@ export default function ComprasPage() {
       return l
     }))
 
-    toast.success(`✓ Línea convertida a "${productoDestino.nombre}" (${nuevaCantidad} unid. a costo ${formatCOP(nuevoCosto)} / Venta: ${formatCOP(nuevoPrecioVenta)})`)
+    toast.success(`✓ Línea convertida a "${productoDestino.nombre}" (${nuevaCantidad} unid. a costo ${formatCOP(costoFinalLinea)} / Venta: ${formatCOP(nuevoPrecioVenta)})`)
     setModalConvertidor(null)
   }
 
@@ -1290,10 +1380,10 @@ export default function ComprasPage() {
                       </div>
 
                       {/* Badge y Switcher de Estrategia de Costo (Promedio Ponderado vs Costo Más Alto) */}
-                      {l.stock_actual_bd > 0 && l.costo_anterior_bd > 0 && (
+                      {(l.costo_promedio_ponderado || (l.stock_actual_bd > 0 && l.costo_anterior_bd > 0)) && (
                         <div className="mt-2 bg-dark-900/90 border border-dark-700 rounded-lg p-2 space-y-1.5 text-[11px]">
                           <div className="flex items-center justify-between gap-1 text-[10px] text-dark-400">
-                            <span>📦 Stock actual: <strong className="text-dark-200">{l.stock_actual_bd}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_anterior_bd)}</span></span>
+                            <span>📦 Stock actual: <strong className="text-dark-200">{l.stock_actual_bd || 0}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_anterior_bd || 0)}</span></span>
                             <span>📥 Factura: <strong className="text-dark-200">{l.cantidad}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_factura || l.costo_unitario)}</span></span>
                           </div>
                           <div className="flex items-center gap-1 pt-0.5 flex-wrap">
@@ -1345,9 +1435,9 @@ export default function ComprasPage() {
                     <td className="px-2 py-2 text-center">
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         step="any"
-                        className="input-field w-16 py-1 px-1.5 text-center font-mono text-xs"
+                        className="input-field w-20 py-1 px-1 text-center font-mono text-xs"
                         value={l.cantidad}
                         onChange={e => setLineaCampo(l.key, 'cantidad', parseFloat(e.target.value) || 1)}
                       />
@@ -2313,6 +2403,63 @@ export default function ComprasPage() {
                   </span>
                 </div>
 
+                {/* Selector de Estrategia de Costo en Modal */}
+                {parseFloat(modalConvertidor.productoDestino.stock_actual || 0) > 0 && parseFloat(modalConvertidor.productoDestino.precio_costo || 0) > 0 && (
+                  <div className="bg-dark-800 p-3 rounded-xl border border-primary-700/50 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                        ⚖️ Estrategia de Costo para Inventario:
+                      </span>
+                      <span className="text-[10px] text-dark-400 font-mono">
+                        Stock en BD: <strong className="text-white">{modalConvertidor.productoDestino.stock_actual}</strong> @ <span className="text-dark-300">{formatCOP(modalConvertidor.productoDestino.precio_costo)}</span>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCambioEstrategiaModalConvertidor('PROMEDIO_PONDERADO')}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          (modalConvertidor.estrategiaCosto || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO') === 'PROMEDIO_PONDERADO'
+                            ? 'bg-primary-900/60 border-primary-500 text-white shadow-sm ring-1 ring-primary-500/50'
+                            : 'bg-dark-900 border-dark-700 text-dark-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold block text-primary-300">⚖️ Promedio Ponderado</span>
+                        <span className="text-xs font-mono font-bold text-white">{formatCOP(modalConvertidor.costoPromedioPonderado || modalConvertidor.costoFacturaUnit)}</span>
+                        <span className="text-[9px] text-dark-400 block mt-0.5">Equilibrado</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCambioEstrategiaModalConvertidor('COSTO_MAS_ALTO')}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          (modalConvertidor.estrategiaCosto || estrategiaCostoGlobal) === 'COSTO_MAS_ALTO'
+                            ? 'bg-amber-900/60 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/50'
+                            : 'bg-dark-900 border-dark-700 text-dark-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold block text-amber-300">🛡️ Costo Más Alto</span>
+                        <span className="text-xs font-mono font-bold text-white">{formatCOP(modalConvertidor.costoMasAlto || modalConvertidor.costoFacturaUnit)}</span>
+                        <span className="text-[9px] text-dark-400 block mt-0.5">Protege Margen</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCambioEstrategiaModalConvertidor('ULTIMO_COSTO')}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          (modalConvertidor.estrategiaCosto || estrategiaCostoGlobal) === 'ULTIMO_COSTO'
+                            ? 'bg-blue-900/60 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
+                            : 'bg-dark-900 border-dark-700 text-dark-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold block text-blue-300">🔄 Último Factura</span>
+                        <span className="text-xs font-mono font-bold text-white">{formatCOP(modalConvertidor.costoUltimo || modalConvertidor.costoFacturaUnit)}</span>
+                        <span className="text-[9px] text-dark-400 block mt-0.5">Factura actual</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                   {/* Cantidad */}
                   <div className="bg-dark-800 p-2.5 rounded-xl border border-dark-700">
@@ -2331,13 +2478,21 @@ export default function ComprasPage() {
 
                   {/* Costo Unitario */}
                   <div className="bg-dark-800 p-2.5 rounded-xl border border-dark-700">
-                    <span className="text-dark-400 text-[11px] block font-medium">💲 Costo Unitario:</span>
+                    <span className="text-dark-400 text-[11px] block font-medium">💲 Costo Resultante:</span>
                     <p className="text-emerald-400 font-bold font-mono text-base mt-0.5">
-                      {modalConvertidor.modo === 'OBSEQUIO'
-                        ? (modalConvertidor.costoTratamiento === 'CERO' ? '$0' : formatCOP(modalConvertidor.productoDestino.precio_costo))
-                        : formatCOP(modalConvertidor.linea.costo_unitario / Math.max(1, parseInt(modalConvertidor.factor) || 1))}
+                      {formatCOP(modalConvertidor.costoEfectivo || (
+                        modalConvertidor.modo === 'OBSEQUIO'
+                          ? (modalConvertidor.costoTratamiento === 'CERO' ? 0 : parseFloat(modalConvertidor.productoDestino.precio_costo || 0))
+                          : (modalConvertidor.linea.costo_unitario / Math.max(1, parseInt(modalConvertidor.factor) || 1))
+                      ))}
                     </p>
-                    <span className="text-[10px] text-dark-500">por cada unidad</span>
+                    <span className="text-[10px] text-dark-500">
+                      {modalConvertidor.costoPromedioPonderado && modalConvertidor.costoEfectivo === modalConvertidor.costoPromedioPonderado
+                        ? '(Promedio Ponderado)'
+                        : modalConvertidor.costoMasAlto && modalConvertidor.costoEfectivo === modalConvertidor.costoMasAlto
+                        ? '(Costo Techo)'
+                        : 'por cada unidad'}
+                    </span>
                   </div>
 
                   {/* % Margen de Ganancia (Editable) */}
@@ -2373,9 +2528,11 @@ export default function ComprasPage() {
                     <span className="text-[10px] text-green-400/80 font-mono block mt-1">
                       Ganancia: +{formatCOP(
                         Math.max(0, (modalConvertidor.precioVentaPersonalizado || 0) - (
-                          modalConvertidor.modo === 'OBSEQUIO'
-                            ? (modalConvertidor.costoTratamiento === 'CERO' ? 0 : parseFloat(modalConvertidor.productoDestino?.precio_costo || 0))
-                            : (modalConvertidor.linea.costo_unitario / Math.max(1, parseInt(modalConvertidor.factor) || 1))
+                          modalConvertidor.costoEfectivo || (
+                            modalConvertidor.modo === 'OBSEQUIO'
+                              ? (modalConvertidor.costoTratamiento === 'CERO' ? 0 : parseFloat(modalConvertidor.productoDestino?.precio_costo || 0))
+                              : (modalConvertidor.linea.costo_unitario / Math.max(1, parseInt(modalConvertidor.factor) || 1))
+                          )
                         ))
                       )}
                     </span>
