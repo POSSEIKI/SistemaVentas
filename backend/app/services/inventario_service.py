@@ -662,10 +662,10 @@ async def analizar_factura_compra_excel(
     fecha_factura_detectada = None
     formato_detectado = "DESCONOCIDO"
 
-    # A. PDF (Facturas de Medicamentos / DIAN / LOINPRO / Copservir / Audifarma / Dromayor / Distribuidoras)
+    # A. PDF (Facturas de Retail, Almacenes de Cadena, Alkosto, Éxito, Mayoristas, Ferreterías, Medicamentos y DIAN)
     es_pdf = fname_lower.endswith(".pdf") or file_bytes.strip().startswith(b"%PDF")
     if es_pdf:
-        formato_detectado = "PDF_FACTURA_MEDICAMENTOS"
+        formato_detectado = "PDF_FACTURA_UNIVERSAL"
         try:
             import pdfplumber
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
@@ -676,19 +676,27 @@ async def analizar_factura_compra_excel(
 
                 lineas_pdf = [l.strip() for l in texto_completo.splitlines() if l.strip()]
 
-                # 1. Metadatos de Cabecera
+                # 1. Metadatos de Cabecera Universales
                 for l in lineas_pdf[:35]:
                     l_str = l.strip()
-                    if not proveedor_detectado and any(term in l_str.upper() for term in ["S.A.S", "S.A.", "LTDA", "COOPIDROGAS", "DISTRIBUIDORA", "DROGUERIA", "LABORATORIO", "LOINPRO", "AUDIFARMA", "DROMAYOR", "ETICOS"]):
+                    # NIT
+                    m_nit = re.search(r'\b(?:Nit|NIT|N\.I\.T\.)\s*[:.]?\s*(\d{7,11}(?:-\d)?)\b', l_str)
+                    if m_nit and not proveedor_detectado:
                         proveedor_detectado = l_str
 
-                    m_num = re.search(r'\b(?:Numero|Número|Factura\s*(?:N[°o]|Electr[oó]nica\s*de\s*Venta)?)\s*[:.]?\s*([A-Za-z0-9\s\-]{3,25})', l_str, re.IGNORECASE)
+                    # Razón Social / Proveedor
+                    if not proveedor_detectado and any(term in l_str.upper() for term in ["S.A.S", "S.A.", "LTDA", "ALKOSTO", "EXITO", "SODIMAC", "HOMECENTER", "MAKRO", "COOPIDROGAS", "DISTRIBUIDORA", "DROGUERIA", "LABORATORIO", "LOINPRO", "AUDIFARMA", "DROMAYOR", "ETICOS", "COLOMBIANA DE COMERCIO"]):
+                        proveedor_detectado = l_str
+
+                    # Número de Factura
+                    m_num = re.search(r'(?:Factura(?:\s+Electronica)?(?:\s+de\s+Venta)?|Factura\s*N[°o]|Pedido\s*No\.?|Doc(?:\s*No)?|Nro|FEV|F\.V\.|Consecutivo)\s*[:.]?\s*([A-Za-z0-9\-_]{3,25})', l_str, re.IGNORECASE)
                     if m_num and not numero_factura_detectado:
                         pos = m_num.group(1).strip()
                         if any(c.isdigit() for c in pos) and not "ELECTR" in pos.upper():
                             numero_factura_detectado = pos
 
-                    m_fec = re.search(r'Fecha\s*(?:Generaci[oó]n|Expedici[oó]n|Factura)?\s*[:.]?\s*(\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})', l_str, re.IGNORECASE)
+                    # Fecha
+                    m_fec = re.search(r'Fecha\s*(?:Generaci[oó]n|Expedici[oó]n|Factura)?\s*[:.]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})', l_str, re.IGNORECASE)
                     if m_fec and not fecha_factura_detectada:
                         raw_f = m_fec.group(1)
                         m_f_iso = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$", raw_f)
@@ -699,126 +707,191 @@ async def analizar_factura_compra_excel(
                             if m_f_lat:
                                 fecha_factura_detectada = f"{m_f_lat.group(3)}-{int(m_f_lat.group(2)):02d}-{int(m_f_lat.group(1)):02d}"
 
-                # 2. Localizar bloque de items
-                idx_inicio = -1
-                for i, l in enumerate(lineas_pdf):
-                    l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
-                    if "ITEM" in l_norm and ("DIGO" in l_norm or "REF" in l_norm or "DESCRIP" in l_norm or "CANT" in l_norm):
-                        idx_inicio = i + 1
-                        break
+                # Si aún no tiene proveedor, usar la primera línea válida no genérica
+                if not proveedor_detectado:
+                    for l in lineas_pdf[:6]:
+                        if not any(k in l.upper() for k in ['FACTURA', 'CLIENTE', 'FECHA', 'NIT', 'PEDIDO', 'HORA', 'CAJA', 'PEDIDO NO']):
+                            if len(l) >= 3:
+                                proveedor_detectado = l
+                                break
 
-                bloque_items = []
-                if idx_inicio != -1:
-                    i = idx_inicio
-                    while i < len(lineas_pdf):
-                        l = lineas_pdf[i]
-                        l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
-                        if any(term in l_norm for term in ["TOTAL NRO. ITEMS", "TOTAL NRO ITEMS", "OBSERVACIONES", "SUBTOTAL", "VALOR EN LETRAS", "SON:", "TOTAL FACTURA", "CUFE"]):
-                            break
-                        bloque_items.append(l)
-                        i += 1
-                else:
-                    bloque_items = lineas_pdf
-
-                # 3. Unificar renglones multilínea
-                patron_con_item = re.compile(r'^(\d{1,4})\s+([A-Za-z0-9\-]{4,25})\s+(.*)$')
-                patron_con_codigo_alfa = re.compile(r'^([A-Za-z]+[0-9]+[A-Za-z0-9\-]*|[0-9]+[A-Za-z]+[A-Za-z0-9\-]*)\s+(.*)$')
-
-                items_unificados = []
-                item_actual = None
-                ultimo_item_num = 0
-
-                for l in bloque_items:
-                    m1 = patron_con_item.match(l)
-                    es_nuevo = False
-                    cod = ""
-                    resto = ""
-
-                    if m1:
-                        num = int(m1.group(1))
-                        if num == ultimo_item_num + 1 or (ultimo_item_num == 0 and num in [1, 2]):
-                            es_nuevo = True
-                            ultimo_item_num = num
-                            cod = m1.group(2)
-                            resto = m1.group(3)
-                    elif not es_nuevo:
-                        m2 = patron_con_codigo_alfa.match(l)
-                        if m2 and any(k in l for k in ["CA", "NIU", "VI", "UND", "TAB", "CAP", "0,00", "1,00", "0.00"]):
-                            es_nuevo = True
-                            cod = m2.group(1)
-                            resto = m2.group(2)
-
-                    if es_nuevo:
-                        if item_actual:
-                            items_unificados.append(item_actual)
-                        item_actual = {
-                            "codigo": cod,
-                            "resto": resto,
-                            "lineas_extra": []
-                        }
-                    else:
-                        if item_actual:
-                            item_actual["lineas_extra"].append(l)
-
-                if item_actual:
-                    items_unificados.append(item_actual)
-
-                patron_numeros_finales = re.compile(
-                    r'^(?P<desc_y_lote>.*?)\s+'
-                    r'(?:(?P<umedida>[A-Za-z]{2,5})\s+)?'
-                    r'(?:(?P<iva>\d+(?:[.,]\d+)?)\s+)?'
-                    r'(?P<cant>\d+(?:[.,]\d+)?)\s+'
-                    r'(?P<vr_unit>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)\s+'
-                    r'(?:(?P<dcto>\d+(?:[.,]\d+)?)\s+)?'
-                    r'(?P<vr_total>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)$'
-                )
+                # ── ESTRATEGIA 1: Formato POS Retail / Tiquete Multilínea (Alkosto, Éxito, Cadenas) ────
+                patron_pos_5num = re.compile(r'^(\d{1,4})\s+(\d{6,14})\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:\.\d+)?)$')
+                patron_pos_4num = re.compile(r'^(\d{1,4})\s+(\d{6,14})\s+(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)\s+(\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:\.\d+)?)$')
 
                 filas_extraidas = []
-                for it in items_unificados:
-                    codigo = it["codigo"]
-                    resto = it["resto"]
-                    extras = " ".join(it["lineas_extra"]).strip()
+                i = 0
+                while i < len(lineas_pdf):
+                    l = lineas_pdf[i]
+                    m5 = patron_pos_5num.match(l)
+                    m4 = patron_pos_4num.match(l) if not m5 else None
 
-                    m_num = patron_numeros_finales.search(resto)
-                    if m_num:
-                        g = m_num.groupdict()
-                        desc_y_lote = g["desc_y_lote"].strip()
-                        if extras:
-                            desc_y_lote = desc_y_lote + " " + extras
-
-                        cant = _smart_parse_num(g["cant"], is_price=False, default=1.0)
-                        vr_u = _smart_parse_num(g["vr_unit"], is_price=True, default=0.0)
-                        dcto = _smart_parse_num(g.get("dcto"), is_price=False, default=0.0)
-                        iva = _smart_parse_num(g.get("iva"), is_price=False, default=0.0)
-                        vr_tot = _smart_parse_num(g["vr_total"], is_price=True, default=0.0)
-
-                        p_desc = _parse_pharma_description(desc_y_lote)
-                        nom_limpio = p_desc["nombre"]
-                        lote = p_desc["lote"]
-                        venc = p_desc["vencimiento"]
-                        cnt_caja = p_desc["contenido_caja"]
-
-                        if vr_tot > 0 and cant > 0:
-                            costo_neto = round(vr_tot / cant, 2)
-                        elif vr_u > 0:
-                            costo_neto = round(vr_u * (1.0 - dcto / 100.0), 2)
+                    if m5 or m4:
+                        m = m5 if m5 else m4
+                        num_item = int(m.group(1))
+                        cod_barras = m.group(2)
+                        if m5:
+                            iva = float(m.group(3).replace(',', '.'))
+                            ipo = float(m.group(4).replace(',', '.'))
+                            cant = float(m.group(5).replace(',', '.'))
+                            tot_raw = m.group(6).replace('.', '').replace(',', '.')
                         else:
-                            costo_neto = 0.0
+                            iva = float(m.group(3).replace(',', '.'))
+                            cant = float(m.group(4).replace(',', '.'))
+                            tot_raw = m.group(5).replace('.', '').replace(',', '.')
+                        total_s_desc = float(tot_raw)
+
+                        nombre = ''
+                        descuento_val = 0.0
+                        i += 1
+                        while i < len(lineas_pdf):
+                            nxt = lineas_pdf[i]
+                            if patron_pos_5num.match(nxt) or patron_pos_4num.match(nxt) or any(term in nxt.upper() for term in ['TOTAL LINEAS', 'SUBTOTAL', 'VALOR TOTAL', 'CUFE', 'RESPONSABLE I.V.A']):
+                                break
+                            m_desc = re.search(r'Descuento\s+(\d+(?:[.,]\d+)?)\s*%\s*(\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:\.\d+)?)-?', nxt, re.IGNORECASE)
+                            if m_desc:
+                                d_raw = m_desc.group(2).replace('.', '').replace(',', '.')
+                                descuento_val = float(d_raw)
+                            else:
+                                nombre = (nombre + ' ' + nxt).strip()
+                            i += 1
+
+                        tot_neto = max(0.0, total_s_desc - descuento_val)
+                        costo_u = round(tot_neto / cant, 2) if cant > 0 else 0.0
 
                         filas_extraidas.append([
-                            codigo,
-                            "",
-                            nom_limpio,
+                            cod_barras,
+                            cod_barras,
+                            nombre,
                             cant,
-                            costo_neto,
+                            costo_u,
                             iva,
                             0,
-                            lote,
-                            venc,
-                            cnt_caja
+                            None,
+                            None,
+                            1
                         ])
+                    else:
+                        i += 1
 
-                print(f"[DEBUG PDF] items_unificados={len(items_unificados)}, filas_extraidas={len(filas_extraidas)}")
+                # ── ESTRATEGIA 2: Formato Mayorista / Distribución Estándar (si la estrategia 1 no capturó items) ────
+                if not filas_extraidas:
+                    idx_inicio = -1
+                    for i_l, l in enumerate(lineas_pdf):
+                        l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
+                        if "ITEM" in l_norm and ("DIGO" in l_norm or "REF" in l_norm or "DESCRIP" in l_norm or "CANT" in l_norm):
+                            idx_inicio = i_l + 1
+                            break
+
+                    bloque_items = []
+                    if idx_inicio != -1:
+                        i_b = idx_inicio
+                        while i_b < len(lineas_pdf):
+                            l = lineas_pdf[i_b]
+                            l_norm = re.sub(r'[^A-Za-z0-9\s.,/%+-]', ' ', l).upper()
+                            if any(term in l_norm for term in ["TOTAL NRO. ITEMS", "TOTAL NRO ITEMS", "OBSERVACIONES", "SUBTOTAL", "VALOR EN LETRAS", "SON:", "TOTAL FACTURA", "CUFE"]):
+                                break
+                            bloque_items.append(l)
+                            i_b += 1
+                    else:
+                        bloque_items = lineas_pdf
+
+                    patron_con_item = re.compile(r'^(\d{1,4})\s+([A-Za-z0-9\-]{4,25})\s+(.*)$')
+                    patron_con_codigo_alfa = re.compile(r'^([A-Za-z]+[0-9]+[A-Za-z0-9\-]*|[0-9]+[A-Za-z]+[A-Za-z0-9\-]*)\s+(.*)$')
+
+                    items_unificados = []
+                    item_actual = None
+                    ultimo_item_num = 0
+
+                    for l in bloque_items:
+                        m1 = patron_con_item.match(l)
+                        es_nuevo = False
+                        cod = ""
+                        resto = ""
+
+                        if m1:
+                            num = int(m1.group(1))
+                            if num == ultimo_item_num + 1 or (ultimo_item_num == 0 and num in [1, 2]):
+                                es_nuevo = True
+                                ultimo_item_num = num
+                                cod = m1.group(2)
+                                resto = m1.group(3)
+                        elif not es_nuevo:
+                            m2 = patron_con_codigo_alfa.match(l)
+                            if m2 and any(k in l for k in ["CA", "NIU", "VI", "UND", "TAB", "CAP", "0,00", "1,00", "0.00"]):
+                                es_nuevo = True
+                                cod = m2.group(1)
+                                resto = m2.group(2)
+
+                        if es_nuevo:
+                            if item_actual:
+                                items_unificados.append(item_actual)
+                            item_actual = {
+                                "codigo": cod,
+                                "resto": resto,
+                                "lineas_extra": []
+                            }
+                        else:
+                            if item_actual:
+                                item_actual["lineas_extra"].append(l)
+
+                    if item_actual:
+                        items_unificados.append(item_actual)
+
+                    patron_numeros_finales = re.compile(
+                        r'^(?P<desc_y_lote>.*?)\s+'
+                        r'(?:(?P<umedida>[A-Za-z]{2,5})\s+)?'
+                        r'(?:(?P<iva>\d+(?:[.,]\d+)?)\s+)?'
+                        r'(?P<cant>\d+(?:[.,]\d+)?)\s+'
+                        r'(?P<vr_unit>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)\s+'
+                        r'(?:(?P<dcto>\d+(?:[.,]\d+)?)\s+)?'
+                        r'(?P<vr_total>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?|\d+(?:[.,]\d+)?)$'
+                    )
+
+                    for it in items_unificados:
+                        codigo = it["codigo"]
+                        resto = it["resto"]
+                        extras = " ".join(it["lineas_extra"]).strip()
+
+                        m_num = patron_numeros_finales.search(resto)
+                        if m_num:
+                            g = m_num.groupdict()
+                            desc_y_lote = g["desc_y_lote"].strip()
+                            if extras:
+                                desc_y_lote = desc_y_lote + " " + extras
+
+                            cant = _smart_parse_num(g["cant"], is_price=False, default=1.0)
+                            vr_u = _smart_parse_num(g["vr_unit"], is_price=True, default=0.0)
+                            dcto = _smart_parse_num(g.get("dcto"), is_price=False, default=0.0)
+                            iva = _smart_parse_num(g.get("iva"), is_price=False, default=0.0)
+                            vr_tot = _smart_parse_num(g["vr_total"], is_price=True, default=0.0)
+
+                            p_desc = _parse_pharma_description(desc_y_lote)
+                            nom_limpio = p_desc["nombre"]
+                            lote = p_desc["lote"]
+                            venc = p_desc["vencimiento"]
+                            cnt_caja = p_desc["contenido_caja"]
+
+                            if vr_tot > 0 and cant > 0:
+                                costo_neto = round(vr_tot / cant, 2)
+                            elif vr_u > 0:
+                                costo_neto = round(vr_u * (1.0 - dcto / 100.0), 2)
+                            else:
+                                costo_neto = 0.0
+
+                            filas_extraidas.append([
+                                codigo,
+                                codigo if len(codigo) >= 8 else "",
+                                nom_limpio,
+                                cant,
+                                costo_neto,
+                                iva,
+                                0,
+                                lote,
+                                venc,
+                                cnt_caja
+                            ])
+
                 if filas_extraidas:
                     filas_raw = [["codigo", "codigo_barras", "nombre", "cantidad", "costo_unitario", "iva_porcentaje", "precio_sugerido", "lote", "vencimiento", "contenido_caja"]] + filas_extraidas
 
