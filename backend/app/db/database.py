@@ -64,12 +64,7 @@ async def init_db() -> None:
                     ('Ampolla', 'AMP'), ('Tubo', 'TB'), ('Sobre', 'SB'), ('Paquete', 'PQ'),
                     ('Litro', 'LT'), ('Kilo', 'KG'), ('Metro', 'MT'), ('Par', 'PR')
                 ]
-                CATEGORIAS_DEF = [
-                    'General', 'Medicamentos', 'Analgésicos y Antiinflamatorios',
-                    'Antibióticos', 'Vitaminas y Suplementos', 'Cuidado Personal y Aseo',
-                    'Dispositivos Médicos', 'Ferretería', 'Herramientas', 'Construcción',
-                    'Eléctricos', 'Tornillería y Fijaciones', 'Pinturas y Químicos', 'Plomería'
-                ]
+                CATEGORIAS_DEF = ['General']
 
                 async with AsyncSessionLocal() as session:
                     await inicializar_planes_predeterminados(session)

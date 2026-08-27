@@ -141,8 +141,69 @@ async def buscar_productos(
     productos = result.scalars().unique().all()
     return [_to_out(p) for p in productos]
 
+CATEGORIAS_POR_RUBRO = {
+    "FARMACIA": {
+        "medicamentos", "analgesicos", "antiinflamatorios", "antibioticos", "vitaminas",
+        "suplementos", "cuidado personal", "aseo", "dispositivos medicos", "maternidad",
+        "bebes", "primeros auxilios", "drogueria", "farmacia", "general"
+    },
+    "DROGUERIA": {
+        "medicamentos", "analgesicos", "antiinflamatorios", "antibioticos", "vitaminas",
+        "suplementos", "cuidado personal", "aseo", "dispositivos medicos", "maternidad",
+        "bebes", "primeros auxilios", "drogueria", "farmacia", "general"
+    },
+    "FERRETERIA": {
+        "herramientas", "herramientas manuales", "herramientas electricas", "construccion",
+        "tornilleria", "fijaciones", "pinturas", "quimicos", "plomeria", "fontaneria",
+        "electricos", "iluminacion", "cerrajeria", "seguridad", "ferreteria", "general"
+    },
+    "MINIMARKET": {
+        "abarrotes", "bebidas", "licores", "lacteos", "huevos", "frutas", "verduras",
+        "carnes", "embutidos", "limpieza", "hogar", "snacks", "dulces", "panaderia",
+        "minimarket", "supermercado", "viveres", "general"
+    },
+    "SUPERMERCADO": {
+        "abarrotes", "bebidas", "licores", "lacteos", "huevos", "frutas", "verduras",
+        "carnes", "embutidos", "limpieza", "hogar", "snacks", "dulces", "panaderia",
+        "minimarket", "supermercado", "viveres", "general"
+    },
+    "RESTAURANTE": {
+        "platos a la carta", "bebidas", "refrescos", "desayunos", "postres", "dulces",
+        "combos", "promociones", "entradas", "almuerzos", "comidas rapidas", "restaurante", "general"
+    },
+    "PANADERIA": {
+        "panes", "reposteria", "bebidas", "cafeteria", "postres", "dulces", "lacteos",
+        "insumos de panaderia", "panaderia", "pasteleria", "general"
+    },
+    "ROPA": {
+        "ropa hombre", "ropa mujer", "ropa infantil", "calzado", "accesorios",
+        "ropa deportiva", "moda", "textil", "general"
+    },
+    "COMERCIO_GENERAL": {
+        "general", "articulos varios", "accesorios", "servicios"
+    }
+}
+
+def _es_categoria_afin(nombre_cat: str, rubro: str) -> bool:
+    import unicodedata
+    s = str(nombre_cat or "").strip().lower()
+    norm = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    if "general" in norm:
+        return True
+    afines = CATEGORIAS_POR_RUBRO.get(rubro.upper(), CATEGORIAS_POR_RUBRO.get("COMERCIO_GENERAL", set()))
+    return any(p in norm for p in afines)
+
 @router.get("/categorias/lista")
-async def listar_categorias(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def listar_categorias(
+    solo_con_productos: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user)
+):
+    from app.models.configuracion import ConfiguracionEmpresa
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    cfg = res_cfg.scalar_one_or_none()
+    rubro = (cfg.rubro if cfg and cfg.rubro else "FERRETERIA").upper()
+
     stmt = (
         select(Categoria.id, Categoria.nombre, func.count(Producto.id).label("total_productos"))
         .outerjoin(Producto, (Producto.categoria_id == Categoria.id) & (Producto.activo == True))
@@ -151,10 +212,24 @@ async def listar_categorias(db: AsyncSession = Depends(get_db), _=Depends(get_cu
         .order_by(Categoria.nombre)
     )
     result = await db.execute(stmt)
-    return [
-        {"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos}
-        for row in result.all()
-    ]
+    todas = result.all()
+
+    categorias_filtradas = []
+    for row in todas:
+        # 1. Si la categoría tiene al menos 1 producto registrado en este negocio, SIEMPRE se muestra
+        if row.total_productos > 0:
+            categorias_filtradas.append({"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos})
+        elif not solo_con_productos:
+            # 2. Si NO tiene productos, SOLO se muestra si es afín al rubro del negocio
+            if _es_categoria_afin(row.nombre, rubro):
+                categorias_filtradas.append({"id": row.id, "nombre": row.nombre, "total_productos": 0})
+
+    if not categorias_filtradas:
+        for row in todas:
+            if "general" in row.nombre.lower():
+                categorias_filtradas.append({"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos})
+
+    return categorias_filtradas
 
 @router.post("/categorias")
 async def crear_categoria(datos: dict, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):

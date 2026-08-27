@@ -205,6 +205,26 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
     cfg.rubro = datos.rubro or "FARMACIA"
     cfg.primer_inicio = False
 
+    # 8.1 Sembrar categorías pertinentes al rubro de la nueva empresa
+    from app.models.producto import Categoria
+    CATEGORIAS_RUBRO_MAP = {
+        "FARMACIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
+        "DROGUERIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
+        "FERRETERIA": ["Herramientas Manuales", "Herramientas Eléctricas", "Construcción", "Tornillería y Fijaciones", "Pinturas y Químicos", "Plomería y Fontanería", "Eléctricos e Iluminación", "Cerrajería y Seguridad", "Ferretería", "General"],
+        "MINIMARKET": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
+        "SUPERMERCADO": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
+        "RESTAURANTE": ["Platos a la Carta", "Bebidas y Refrescos", "Desayunos", "Comidas Rápidas", "Postres y Dulces", "Combos y Promociones", "Entradas", "General"],
+        "PANADERIA": ["Panes Tradicionales", "Repostería y Pastelería", "Bebidas y Cafetería", "Postres y Dulces", "Lácteos", "Insumos de Panadería", "General"],
+        "ROPA": ["Ropa Hombre", "Ropa Mujer", "Ropa Infantil", "Calzado", "Accesorios", "Ropa Deportiva", "General"],
+        "COMERCIO_GENERAL": ["General", "Artículos Varios", "Accesorios", "Servicios"]
+    }
+    rubro_sel = (datos.rubro or "COMERCIO_GENERAL").upper()
+    cats_rubro = CATEGORIAS_RUBRO_MAP.get(rubro_sel, CATEGORIAS_RUBRO_MAP["COMERCIO_GENERAL"])
+    for nom_c in cats_rubro:
+        rc = await db.execute(select(Categoria).where(Categoria.nombre.ilike(nom_c)))
+        if not rc.scalar_one_or_none():
+            db.add(Categoria(nombre=nom_c, activo=True))
+
     await db.commit()
     await db.refresh(admin)
 
