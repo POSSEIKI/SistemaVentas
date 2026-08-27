@@ -23,32 +23,7 @@ function RequireAuth({ children }) {
 }
 
 function AppRoutes() {
-  const [checking, setChecking] = useState(true)
-  const [needsSetup, setNeedsSetup] = useState(false)
   const token = useAuthStore(s => s.token)
-
-  useEffect(() => {
-    authApi.checkSetup()
-      .then(data => setNeedsSetup(data.setup_requerido))
-      .catch(() => {})
-      .finally(() => setChecking(false))
-  }, [])
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-emerald-400 text-lg font-semibold animate-pulse">Cargando FACTUR-AAP...</div>
-      </div>
-    )
-  }
-
-  if (needsSetup) {
-    return (
-      <Routes>
-        <Route path="*" element={<SetupPage onSetupComplete={() => setNeedsSetup(false)} />} />
-      </Routes>
-    )
-  }
 
   return (
     <Routes>

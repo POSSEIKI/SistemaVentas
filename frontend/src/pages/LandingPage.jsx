@@ -10,22 +10,74 @@ import {
 import { suscripcionesApi } from '../api/services'
 import { useAuthStore } from '../stores/authStore'
 
+const DEFAULT_PLANES = [
+  {
+    id: 1,
+    codigo: 'BASICO',
+    nombre: 'Plan Emprendedor',
+    descripcion: 'Ideal para pequeños negocios y tiendas que inician con punto de venta.',
+    precio_mensual: 35000,
+    precio_anual: 350000,
+    destacado: false,
+    caracteristicas: JSON.stringify([
+      'Hasta 500 productos en catálogo',
+      '1 usuario cajero / admin',
+      'Facturación e impresión tirilla 58/80mm',
+      'Control básico de inventario y caja'
+    ])
+  },
+  {
+    id: 2,
+    codigo: 'PRO',
+    nombre: 'Plan Pro Farmacias & Ferreterías',
+    descripcion: 'Diseñado para droguerías, farmacias y ferreterías de alta rotación.',
+    precio_mensual: 65000,
+    precio_anual: 650000,
+    destacado: true,
+    caracteristicas: JSON.stringify([
+      'Productos y ventas ilimitadas',
+      'Venta fraccionada: Caja / Blíster / Unidad',
+      'Búsqueda por Principio Activo / Genérico',
+      'Importador automático PDF (LOINPRO, DIAN) y DAT',
+      'Control de lotes y fechas de vencimiento',
+      'Tirilla WhatsApp y Correo para clientes'
+    ])
+  },
+  {
+    id: 3,
+    codigo: 'ENTERPRISE',
+    nombre: 'Plan Cadenas & Multi-Sede',
+    descripcion: 'Para droguerías con múltiples sucursales y franquicias.',
+    precio_mensual: 120000,
+    precio_anual: 1200000,
+    destacado: false,
+    caracteristicas: JSON.stringify([
+      'Todo lo del Plan Pro incluido',
+      'Soporte Multi-Sucursal y bodegas centrales',
+      'Usuarios y cajeros ilimitados',
+      'Auditoría y reportes consolidados',
+      'Soporte prioritario 24/7 y backups dedicados'
+    ])
+  }
+]
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const token = useAuthStore(s => s.token)
   const usuario = useAuthStore(s => s.usuario)
 
   const [periodoAnual, setPeriodoAnual] = useState(false)
-  const [planes, setPlanes] = useState([])
-  const [loadingPlanes, setLoadingPlanes] = useState(true)
+  const [planes, setPlanes] = useState(DEFAULT_PLANES)
+  const [loadingPlanes, setLoadingPlanes] = useState(false)
   const [faqAbierta, setFaqAbierta] = useState(null)
   const [rubroActivo, setRubroActivo] = useState('FARMACIA')
 
   useEffect(() => {
     suscripcionesApi.planesPublicos()
-      .then(data => setPlanes(data))
+      .then(data => {
+        if (data && data.length > 0) setPlanes(data)
+      })
       .catch(err => console.error('Error cargando planes:', err))
-      .finally(() => setLoadingPlanes(false))
   }, [])
 
   const faqs = [
