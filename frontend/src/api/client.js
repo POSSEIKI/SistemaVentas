@@ -1,7 +1,11 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/authStore'
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
+let rawBase = (import.meta.env.VITE_API_URL || '/api/v1').trim()
+if (rawBase.startsWith('http') && !rawBase.includes('/api/v1')) {
+  rawBase = rawBase.replace(/\/+$/, '') + '/api/v1'
+}
+const BASE_URL = rawBase
 
 const api = axios.create({ baseURL: BASE_URL, timeout: 120000 })
 
