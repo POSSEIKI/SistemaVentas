@@ -774,7 +774,69 @@ async def analizar_factura_compra_excel(
                     else:
                         i += 1
 
-                # ── ESTRATEGIA 2: Formato Mayorista / Distribución Estándar (si la estrategia 1 no capturó items) ────
+                # ── ESTRATEGIA 2: Tabular Estándar con Cantidades Decimales y U/M (Combustibles / Granel / Primax / EDS / Ferretería) ────
+                if not filas_extraidas:
+                    idx_tabla = -1
+                    for idx, l in enumerate(lineas_pdf):
+                        l_up = l.upper()
+                        if ('CÓDIGO' in l_up or 'CODIGO' in l_up) and ('DESCRIP' in l_up or 'PRODUCTO' in l_up) and ('CANT' in l_up or 'PRECIO' in l_up or 'TOTAL' in l_up):
+                            idx_tabla = idx + 1
+                            break
+
+                    if idx_tabla != -1:
+                        for i_t in range(idx_tabla, len(lineas_pdf)):
+                            l = lineas_pdf[i_t]
+                            if any(term in l.upper() for term in ['IMPUESTOS', 'TOTALES', 'NRO LINEAS', 'SUBTOTAL:', 'SON:', 'INFORMACIÓN DEL PAGO', 'INFORMACION DEL PAGO', 'NOTAS']):
+                                break
+                            tokens = l.split()
+                            if len(tokens) >= 5 and tokens[0].isdigit():
+                                codigo = tokens[1]
+                                tot_str = tokens[-1].replace('.', '').replace(',', '.')
+                                try:
+                                    tot_val = float(tot_str)
+                                except:
+                                    tot_val = 0.0
+
+                                desc_tokens = []
+                                cant_val = None
+                                precio_val = None
+                                um_val = None
+
+                                idx_scan = 2
+                                while idx_scan < len(tokens) - 1:
+                                    tok = tokens[idx_scan]
+                                    if re.match(r'^\d{1,4}(?:[.,]\d{1,4})?$', tok) and cant_val is None:
+                                        c_cand_dec = float(tok.replace(',', '.'))
+                                        c_cand_int = float(tok.replace('.', '').replace(',', '.'))
+
+                                        if idx_scan + 1 < len(tokens) and tokens[idx_scan+1].lower() in ['galón', 'galon', 'gln', 'lt', 'litro', 'kg', 'kilo', 'und', 'unidad', 'mt', 'metro', 'm2', 'm3', 'bolsa']:
+                                            um_val = tokens[idx_scan+1]
+                                            idx_scan += 1
+
+                                        if idx_scan + 1 < len(tokens):
+                                            p_tok = tokens[idx_scan+1]
+                                            p_cand = float(p_tok.replace('.', '').replace(',', '.'))
+                                            if abs(c_cand_dec * p_cand - tot_val) < max(2.0, tot_val * 0.01):
+                                                cant_val = c_cand_dec
+                                                precio_val = p_cand
+                                                idx_scan += 1
+                                            elif abs(c_cand_int * p_cand - tot_val) < max(2.0, tot_val * 0.01):
+                                                cant_val = c_cand_int
+                                                precio_val = p_cand
+                                                idx_scan += 1
+                                            else:
+                                                cant_val = c_cand_dec
+                                                precio_val = p_cand
+                                                idx_scan += 1
+                                    elif cant_val is None:
+                                        desc_tokens.append(tok)
+                                    idx_scan += 1
+
+                                if cant_val is not None and precio_val is not None:
+                                    nom_prod = ' '.join(desc_tokens)
+                                    filas_extraidas.append([codigo, codigo if len(codigo) >= 8 else '', nom_prod, cant_val, precio_val, 0.0, 0, None, None, 1])
+
+                # ── ESTRATEGIA 3: Formato Mayorista / Distribución Estándar (si las estrategias previas no capturaron items) ────
                 if not filas_extraidas:
                     idx_inicio = -1
                     for i_l, l in enumerate(lineas_pdf):
