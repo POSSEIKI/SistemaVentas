@@ -432,13 +432,19 @@ export default function LandingPage() {
           {/* Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
             {planes.map((plan) => {
-              const precio = periodoAnual ? plan.precio_anual / 12 : plan.precio_mensual
+              const precio = periodoAnual ? Number(plan.precio_anual || 0) / 12 : Number(plan.precio_mensual || 0)
               let itemsCaract = []
               try {
-                itemsCaract = JSON.parse(plan.caracteristicas || '[]')
+                if (Array.isArray(plan.caracteristicas)) {
+                  itemsCaract = plan.caracteristicas
+                } else if (typeof plan.caracteristicas === 'string') {
+                  const parsed = JSON.parse(plan.caracteristicas || '[]')
+                  itemsCaract = Array.isArray(parsed) ? parsed : []
+                }
               } catch (e) {
                 itemsCaract = []
               }
+              if (!Array.isArray(itemsCaract)) itemsCaract = []
 
               return (
                 <div

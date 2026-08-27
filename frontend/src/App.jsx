@@ -1,14 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
-import { useEffect, useState } from 'react'
 import { useAuthStore } from './stores/authStore'
-import { authApi } from './api/services'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import AppLayout from './components/layout/AppLayout'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import SignUpPage from './pages/SignUpPage'
-import SetupPage from './pages/SetupPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,18 +50,20 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: { background: '#0f172a', color: '#fff', border: '1px solid #334155' },
-            success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
-            error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
-          }}
-        />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <AppRoutes />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: { background: '#0f172a', color: '#fff', border: '1px solid #334155' },
+              success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
+              error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+            }}
+          />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
