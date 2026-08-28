@@ -192,13 +192,30 @@ export default function ComprasPage() {
 
   // ─── Calculadora Bidireccional de Costo, Margen y Precio ──────────────────
   const handleCambioCosto = (lineaKey, nuevoCosto) => {
-    const costo = parseFloat(nuevoCosto) || 0
+    const costoFactura = parseFloat(nuevoCosto) || 0
     setLineas(prev => prev.map(l => {
       if (l.key === lineaKey) {
-        const precio = calcularPrecioDesdeCosto(costo, l.porcentaje_ganancia || margenPredeterminado, modoRedondeo)
+        const stockAnt = l.stock_actual_bd || 0
+        const costoAnt = l.costo_anterior_bd || 0
+        const cant = l.cantidad || 1
+        const cpp = (stockAnt > 0 && costoAnt > 0 && costoFactura > 0)
+          ? Math.round((((stockAnt * costoAnt) + (cant * costoFactura)) / (stockAnt + cant)) * 100) / 100
+          : costoFactura
+        const costoMax = Math.max(costoAnt, costoFactura)
+        const costoUlt = costoFactura
+
+        const est = l.estrategia_costo || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO'
+        const costoCalc = est === 'PROMEDIO_PONDERADO' ? cpp : est === 'COSTO_MAS_ALTO' ? costoMax : costoUlt
+
+        const precio = calcularPrecioDesdeCosto(costoCalc, l.porcentaje_ganancia || margenPredeterminado, modoRedondeo)
         return {
           ...l,
-          costo_unitario: costo,
+          costo_unitario: costoFactura,
+          costo_factura: costoFactura,
+          costo_promedio_ponderado: cpp,
+          costo_mas_alto: costoMax,
+          costo_ultimo: costoUlt,
+          costo_calculado_producto: costoCalc,
           precio_sugerido: precio,
           precio_caja: l.maneja_fracciones ? precio : l.precio_caja,
         }
@@ -211,7 +228,8 @@ export default function ComprasPage() {
     const margen = parseFloat(nuevoMargen) || 0
     setLineas(prev => prev.map(l => {
       if (l.key === lineaKey) {
-        const precio = calcularPrecioDesdeCosto(l.costo_unitario, margen, modoRedondeo)
+        const costoBase = l.costo_calculado_producto || l.costo_factura || l.costo_unitario
+        const precio = calcularPrecioDesdeCosto(costoBase, margen, modoRedondeo)
         return {
           ...l,
           porcentaje_ganancia: margen,
@@ -227,8 +245,8 @@ export default function ComprasPage() {
     const precio = parseFloat(nuevoPrecio) || 0
     setLineas(prev => prev.map(l => {
       if (l.key === lineaKey) {
-        const costo = l.costo_unitario
-        const margen = calcularMargenDesdePrecio(costo, precio)
+        const costoBase = l.costo_calculado_producto || l.costo_factura || l.costo_unitario
+        const margen = calcularMargenDesdePrecio(costoBase, precio)
         return {
           ...l,
           precio_sugerido: precio,
@@ -247,19 +265,22 @@ export default function ComprasPage() {
   const handleCambiarEstrategiaCostoLinea = (lineaKey, nuevaEstrategia) => {
     setLineas(prev => prev.map(l => {
       if (l.key === lineaKey) {
-        let nuevoCosto = l.costo_unitario
+        const costoFactura = l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario
+        let nuevoCostoCalc = costoFactura
         if (nuevaEstrategia === 'PROMEDIO_PONDERADO') {
-          nuevoCosto = l.costo_promedio_ponderado || l.costo_unitario
+          nuevoCostoCalc = l.costo_promedio_ponderado || costoFactura
         } else if (nuevaEstrategia === 'COSTO_MAS_ALTO') {
-          nuevoCosto = l.costo_mas_alto || l.costo_unitario
+          nuevoCostoCalc = l.costo_mas_alto || costoFactura
         } else if (nuevaEstrategia === 'ULTIMO_COSTO') {
-          nuevoCosto = l.costo_ultimo || l.costo_factura || l.costo_unitario
+          nuevoCostoCalc = l.costo_ultimo || costoFactura
         }
-        const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCosto, l.porcentaje_ganancia, modoRedondeo)
+        const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCostoCalc, l.porcentaje_ganancia, modoRedondeo)
         return {
           ...l,
           estrategia_costo: nuevaEstrategia,
-          costo_unitario: nuevoCosto,
+          costo_unitario: costoFactura,
+          costo_factura: costoFactura,
+          costo_calculado_producto: nuevoCostoCalc,
           precio_sugerido: nuevoPrecio,
           precio_caja: l.maneja_fracciones ? nuevoPrecio : l.precio_caja,
         }
@@ -271,24 +292,27 @@ export default function ComprasPage() {
   const handleCambiarEstrategiaGlobal = (nuevaEstrategia) => {
     setEstrategiaCostoGlobal(nuevaEstrategia)
     setLineas(prev => prev.map(l => {
-      let nuevoCosto = l.costo_unitario
+      const costoFactura = l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario
+      let nuevoCostoCalc = costoFactura
       if (nuevaEstrategia === 'PROMEDIO_PONDERADO') {
-        nuevoCosto = l.costo_promedio_ponderado || l.costo_unitario
+        nuevoCostoCalc = l.costo_promedio_ponderado || costoFactura
       } else if (nuevaEstrategia === 'COSTO_MAS_ALTO') {
-        nuevoCosto = l.costo_mas_alto || l.costo_unitario
+        nuevoCostoCalc = l.costo_mas_alto || costoFactura
       } else if (nuevaEstrategia === 'ULTIMO_COSTO') {
-        nuevoCosto = l.costo_ultimo || l.costo_factura || l.costo_unitario
+        nuevoCostoCalc = l.costo_ultimo || costoFactura
       }
-      const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCosto, l.porcentaje_ganancia, modoRedondeo)
+      const nuevoPrecio = calcularPrecioDesdeCosto(nuevoCostoCalc, l.porcentaje_ganancia, modoRedondeo)
       return {
         ...l,
         estrategia_costo: nuevaEstrategia,
-        costo_unitario: nuevoCosto,
+        costo_unitario: costoFactura,
+        costo_factura: costoFactura,
+        costo_calculado_producto: nuevoCostoCalc,
         precio_sugerido: nuevoPrecio,
         precio_caja: l.maneja_fracciones ? nuevoPrecio : l.precio_caja,
       }
     }))
-    toast.success(`Estrategia aplicada: ${nuevaEstrategia === 'PROMEDIO_PONDERADO' ? '⚖️ Promedio Ponderado' : nuevaEstrategia === 'COSTO_MAS_ALTO' ? '🛡️ Costo Más Alto' : '🔄 Último Costo'}`)
+    toast.success(`Estrategia aplicada: ${nuevaEstrategia === 'PROMEDIO_PONDERADO' ? '⚖️ Promedio Ponderado' : nuevaEstrategia === 'COSTO_MAS_ALTO' ? '🛡️ Costo Más Alto' : '🔄 Último Costo Factura'}`)
   }
 
   // ─── Cargue y Análisis de Factura Multi-formato (Coopidrogas .DAT, XML DIAN, Excel, CSV) ─────────────
@@ -646,7 +670,7 @@ export default function ComprasPage() {
     }
 
     const estrategiaActiva = estrategiaCosto || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO'
-    const costoFinalLinea = costoEfectivo || (
+    const costoFinalInventario = costoEfectivo || (
       estrategiaActiva === 'PROMEDIO_PONDERADO' ? cpp : estrategiaActiva === 'COSTO_MAS_ALTO' ? costoMax : costoUlt
     )
 
@@ -656,7 +680,7 @@ export default function ComprasPage() {
 
     const nuevoMargen = (margenPersonalizado !== undefined && margenPersonalizado !== null)
       ? parseFloat(margenPersonalizado)
-      : (costoFinalLinea > 0 ? calcularMargenDesdePrecio(costoFinalLinea, nuevoPrecioVenta) : margenPredeterminado)
+      : (costoFinalInventario > 0 ? calcularMargenDesdePrecio(costoFinalInventario, nuevoPrecioVenta) : margenPredeterminado)
 
     // Actualizar la línea en el listado de compra
     setLineas(prev => prev.map(l => {
@@ -673,8 +697,9 @@ export default function ComprasPage() {
           principio_activo: productoDestino.principio_activo || '',
           laboratorio: productoDestino.laboratorio || '',
           cantidad: nuevaCantidad,
-          costo_unitario: costoFinalLinea,
+          costo_unitario: costoFactura,
           costo_factura: costoFactura,
+          costo_calculado_producto: costoFinalInventario,
           costo_anterior_bd: stockAnt > 0 ? costoAnt : 0,
           costo_promedio_ponderado: cpp,
           costo_mas_alto: costoMax,
@@ -699,7 +724,7 @@ export default function ComprasPage() {
       return l
     }))
 
-    toast.success(`✓ Línea convertida a "${productoDestino.nombre}" (${nuevaCantidad} unid. a costo ${formatCOP(costoFinalLinea)} / Venta: ${formatCOP(nuevoPrecioVenta)})`)
+    toast.success(`✓ Línea convertida a "${productoDestino.nombre}" (${nuevaCantidad} unid. a costo factura ${formatCOP(costoFactura)} / Inv: ${formatCOP(costoFinalInventario)} / Venta: ${formatCOP(nuevoPrecioVenta)})`)
     setModalConvertidor(null)
   }
 
@@ -815,10 +840,10 @@ export default function ComprasPage() {
   }
 
   // ─── Guardar Compra Completa ──────────────────────────────────────────────
-  const total = lineas.reduce((acc, l) => acc + (l.cantidad * l.costo_unitario * (1 + (l.iva_porcentaje || 0) / 100)), 0)
+  const total = lineas.reduce((acc, l) => acc + (l.cantidad * (l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario) * (1 + (l.iva_porcentaje || 0) / 100)), 0)
 
   const obsequiosPendientes = lineas.filter(l => {
-    const esObs = l.es_obsequio_probable || (l.costo_unitario <= 0 && !l.convertido_desde_pack)
+    const esObs = l.es_obsequio_probable || ((l.costo_factura || l.costo_unitario) <= 0 && !l.convertido_desde_pack)
     const sinPrecio = !l.precio_sugerido || parseFloat(l.precio_sugerido) <= 0
     return (esObs && !l.convertido_desde_pack) || (sinPrecio)
   })
@@ -845,6 +870,9 @@ export default function ComprasPage() {
       const lineasProcesadas = []
       for (const l of lineas) {
         let prodId = l.producto_id
+        const costoFact = l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario
+        const costoCalc = l.costo_calculado_producto || costoFact
+
         if (!prodId || l.estado === 'NUEVO') {
           const nuevo = await productosApi.crear({
             codigo: l.codigo?.trim() || `PROD-${Date.now().toString().slice(-6)}`,
@@ -854,7 +882,7 @@ export default function ComprasPage() {
             nombre: l.nombre.trim(),
             principio_activo: l.principio_activo?.trim() || null,
             laboratorio: l.laboratorio?.trim() || null,
-            precio_costo: l.costo_unitario,
+            precio_costo: costoCalc,
             precio_venta: l.precio_sugerido,
             iva_porcentaje: l.iva_porcentaje || 0,
             maneja_fracciones: l.maneja_fracciones || false,
@@ -872,8 +900,8 @@ export default function ComprasPage() {
         lineasProcesadas.push({
           producto_id: prodId,
           cantidad: l.cantidad,
-          costo_unitario: l.costo_factura || l.costo_unitario,
-          costo_calculado_producto: l.costo_unitario,
+          costo_unitario: costoFact,
+          costo_calculado_producto: costoCalc,
           estrategia_costo: l.estrategia_costo || estrategiaCostoGlobal || 'PROMEDIO_PONDERADO',
           iva_porcentaje: l.iva_porcentaje || 0,
           precio_sugerido: l.precio_sugerido || null,
@@ -1399,16 +1427,21 @@ export default function ComprasPage() {
                       />
                     </td>
 
-                    {/* Costo Unitario */}
+                    {/* Costo Factura Unitario */}
                     <td className="px-2 py-2">
                       <input
                         type="number"
                         min="0"
                         step="any"
                         className="input-field w-24 py-1 px-2 font-mono text-xs"
-                        value={l.costo_unitario}
+                        value={l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario}
                         onChange={e => handleCambioCosto(l.key, e.target.value)}
                       />
+                      {l.costo_calculado_producto && Math.abs(l.costo_calculado_producto - (l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario)) > 0.01 && (
+                        <span className="text-[10px] text-primary-300 font-mono block mt-0.5" title="Costo asignado al inventario según estrategia">
+                          Inv: {formatCOP(l.costo_calculado_producto)}
+                        </span>
+                      )}
                     </td>
 
                     {/* % Ganancia */}
@@ -1436,7 +1469,7 @@ export default function ComprasPage() {
                         onChange={e => handleCambioPrecioVenta(l.key, e.target.value)}
                       />
                       <span className="text-[10px] text-green-400 font-mono block mt-0.5">
-                        +{formatCOP(gananciaUnitaria)} util.
+                        +{formatCOP(Math.max(0, (l.precio_sugerido || 0) - (l.costo_calculado_producto || l.costo_factura || l.costo_unitario)))} util.
                       </span>
                     </td>
 
@@ -1453,7 +1486,7 @@ export default function ComprasPage() {
 
                     {/* Subtotal */}
                     <td className="px-3 py-2 text-right font-mono font-bold text-primary-400 whitespace-nowrap">
-                      {formatCOP(l.cantidad * l.costo_unitario * (1 + (l.iva_porcentaje || 0) / 100))}
+                      {formatCOP(l.cantidad * (l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario) * (1 + (l.iva_porcentaje || 0) / 100))}
                     </td>
 
                     {/* Acciones */}
