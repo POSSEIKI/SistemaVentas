@@ -689,7 +689,7 @@ export default function ComprasPage() {
           ...l,
           producto_id: productoDestino.id,
           estado: 'ENCONTRADO',
-          nombre: `${productoDestino.nombre} (Conv. desde: ${linea.nombre_original || linea.nombre})`,
+          nombre: productoDestino.nombre,
           codigo: productoDestino.codigo,
           codigo_barras: productoDestino.codigo_barras || '',
           codigo_barras_blister: productoDestino.codigo_barras_blister || '',
@@ -1337,18 +1337,18 @@ export default function ComprasPage() {
             <span className="text-dark-400 text-xs font-mono">{lineas.length} ítems en orden</span>
           </div>
 
-          <table className="w-full text-xs min-w-[960px]">
+          <table className="w-full text-xs">
             <thead className="border-b border-dark-700 bg-dark-900/40 text-dark-500 uppercase tracking-wider">
               <tr>
-                <th className="px-3 py-2.5 text-left w-24">Estado</th>
-                <th className="px-3 py-2.5 text-left min-w-[200px]">Producto / Códigos</th>
-                <th className="px-2 py-2.5 text-center min-w-[90px]">Cant.</th>
-                <th className="px-2 py-2.5 text-left min-w-[115px]">Costo Factura ($)</th>
-                <th className="px-2 py-2.5 text-left min-w-[90px]">% Ganancia</th>
-                <th className="px-2 py-2.5 text-left min-w-[130px]">P. Venta Final ($)</th>
-                <th className="px-2 py-2.5 text-center min-w-[70px]">IVA %</th>
-                <th className="px-3 py-2.5 text-right min-w-[105px]">Subtotal</th>
-                <th className="px-3 py-2.5 text-center min-w-[90px]">Acciones</th>
+                <th className="px-3 py-2.5 text-left w-20">Estado</th>
+                <th className="px-3 py-2.5 text-left">Producto / Códigos</th>
+                <th className="px-2 py-2.5 text-center">Cant.</th>
+                <th className="px-2 py-2.5 text-left">Costo Factura ($)</th>
+                <th className="px-2 py-2.5 text-left">% Ganancia</th>
+                <th className="px-2 py-2.5 text-left">P. Venta Final ($)</th>
+                <th className="px-2 py-2.5 text-center">IVA %</th>
+                <th className="px-3 py-2.5 text-right">Subtotal</th>
+                <th className="px-3 py-2.5 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-700/60">
@@ -1393,9 +1393,16 @@ export default function ComprasPage() {
                     </td>
 
                     {/* Producto */}
-                    <td className="px-3 py-2 min-w-[200px]">
-                      <p className="text-white font-semibold text-xs leading-tight truncate">{l.nombre}</p>
-                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-dark-400 mt-0.5">
+                    <td className="px-3 py-2">
+                      <p className="text-white font-bold text-xs leading-tight">
+                        {l.nombre}
+                      </p>
+                      {l.nombre_origen_pack && (
+                        <p className="text-indigo-400 text-[10px] leading-tight mt-0.5">
+                          ↳ Conv. desde: <span className="font-semibold text-indigo-300">{l.nombre_origen_pack}</span>
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-dark-400 mt-1">
                         <span className="font-mono bg-dark-900 px-1 rounded border border-dark-700">{l.codigo || 'S/C'}</span>
                         {l.codigo_barras && <span>📦 {l.codigo_barras}</span>}
                         {l.lote && (
@@ -1411,11 +1418,6 @@ export default function ComprasPage() {
                         {l.maneja_fracciones && (
                           <span className="text-primary-300 bg-primary-950/60 border border-primary-800/60 px-1 rounded font-medium">
                             Fracción (Caja x{l.contenido_caja})
-                          </span>
-                        )}
-                        {l.nombre_origen_pack && (
-                          <span className="text-indigo-300 bg-indigo-950/60 border border-indigo-800/60 px-1 rounded font-medium">
-                            Orig: {l.nombre_origen_pack}
                           </span>
                         )}
                       </div>
