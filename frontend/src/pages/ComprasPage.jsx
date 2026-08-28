@@ -1427,8 +1427,8 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        style={{ width: `${calcularAnchoInputCh(l.cantidad, 7, 12)}ch` }}
-                        className="input-field min-w-[70px] max-w-[120px] py-1 px-1.5 text-center font-mono text-xs font-semibold"
+                        style={{ width: `${calcularAnchoInputCh(l.cantidad, 7.5, 13)}ch` }}
+                        className="input-field min-w-[75px] max-w-[125px] py-1 px-1.5 text-center font-mono text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={l.cantidad}
                         onChange={e => setLineaCampo(l.key, 'cantidad', parseFloat(e.target.value) || 1)}
                       />
@@ -1440,8 +1440,8 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        style={{ width: `${calcularAnchoInputCh(l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario, 8, 16)}ch` }}
-                        className="input-field min-w-[85px] max-w-[145px] py-1 px-2 font-mono text-xs font-semibold"
+                        style={{ width: `${calcularAnchoInputCh(l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario, 8.5, 16)}ch` }}
+                        className="input-field min-w-[90px] max-w-[150px] py-1 px-2 font-mono text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario}
                         onChange={e => handleCambioCosto(l.key, e.target.value)}
                       />
@@ -1455,17 +1455,17 @@ export default function ComprasPage() {
                     {/* % Ganancia */}
                     <td className="px-2 py-2">
                       <div
-                        style={{ width: `${calcularAnchoInputCh(l.porcentaje_ganancia, 6.5, 10)}ch` }}
-                        className="relative min-w-[68px] max-w-[100px]"
+                        style={{ width: `${calcularAnchoInputCh(l.porcentaje_ganancia, 8.5, 12)}ch` }}
+                        className="relative min-w-[85px] max-w-[115px]"
                       >
                         <input
                           type="number"
                           step="any"
-                          className="input-field w-full py-1 pl-2 pr-5 font-mono text-xs font-bold text-primary-300"
+                          className="input-field w-full py-1 pl-2 pr-6 font-mono text-xs font-bold text-primary-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           value={l.porcentaje_ganancia}
                           onChange={e => handleCambioMargen(l.key, e.target.value)}
                         />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-dark-500 text-[11px] pointer-events-none">%</span>
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-dark-400 text-xs font-bold pointer-events-none">%</span>
                       </div>
                     </td>
 
@@ -1475,8 +1475,8 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        style={{ width: `${calcularAnchoInputCh(l.precio_sugerido, 8, 16)}ch` }}
-                        className="input-field min-w-[90px] max-w-[150px] py-1 px-2 font-mono text-xs font-bold text-white border-primary-500/40"
+                        style={{ width: `${calcularAnchoInputCh(l.precio_sugerido, 8.5, 16)}ch` }}
+                        className="input-field min-w-[95px] max-w-[155px] py-1 px-2 font-mono text-xs font-bold text-white border-primary-500/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={l.precio_sugerido}
                         onChange={e => handleCambioPrecioVenta(l.key, e.target.value)}
                       />
@@ -1490,8 +1490,8 @@ export default function ComprasPage() {
                       <input
                         type="number"
                         min="0"
-                        style={{ width: `${calcularAnchoInputCh(l.iva_porcentaje || 0, 5, 8)}ch` }}
-                        className="input-field min-w-[50px] max-w-[75px] py-1 px-1 text-center font-mono text-xs"
+                        style={{ width: `${calcularAnchoInputCh(l.iva_porcentaje || 0, 5.5, 9)}ch` }}
+                        className="input-field min-w-[55px] max-w-[80px] py-1 px-1 text-center font-mono text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         value={l.iva_porcentaje || 0}
                         onChange={e => setLineaCampo(l.key, 'iva_porcentaje', parseFloat(e.target.value) || 0)}
                       />
