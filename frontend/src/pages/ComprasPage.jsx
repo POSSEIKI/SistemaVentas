@@ -1092,58 +1092,6 @@ export default function ComprasPage() {
             </div>
           </div>
 
-          {/* Barra de Estrategia de Valoración de Costos e Inventario */}
-          <div className="bg-dark-900/90 border border-primary-800/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
-            <div className="flex items-center gap-2 text-dark-300">
-              <span className="w-7 h-7 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center font-bold text-sm">
-                ⚖️
-              </span>
-              <div>
-                <span className="font-bold text-white block">Estrategia de Valoración de Costos:</span>
-                <span className="text-[11px] text-dark-400">
-                  ¿Cómo calcular el nuevo costo y precio cuando ya tienes stock anterior en bodega/tanque?
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => handleCambiarEstrategiaGlobal('PROMEDIO_PONDERADO')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
-                  estrategiaCostoGlobal === 'PROMEDIO_PONDERADO'
-                    ? 'bg-primary-600 text-white border-primary-500 shadow-md shadow-primary-900/40'
-                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
-                }`}
-              >
-                <span>⚖️ Promedio Ponderado</span>
-                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded font-normal">Recomendado</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCambiarEstrategiaGlobal('COSTO_MAS_ALTO')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
-                  estrategiaCostoGlobal === 'COSTO_MAS_ALTO'
-                    ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-900/40'
-                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
-                }`}
-              >
-                <span>🛡️ Costo Más Alto</span>
-                <span className="text-[10px] bg-black/30 px-1 py-0.2 rounded font-normal">Protección Margen</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCambiarEstrategiaGlobal('ULTIMO_COSTO')}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 border ${
-                  estrategiaCostoGlobal === 'ULTIMO_COSTO'
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-900/40'
-                    : 'bg-dark-800 text-dark-300 border-dark-700 hover:text-white hover:bg-dark-700'
-                }`}
-              >
-                <span>🔄 Último Costo Factura</span>
-              </button>
-            </div>
-          </div>
-
           {productosNuevosPendientes.length > 0 && (
             <div className="bg-amber-950/30 border border-amber-800/60 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 text-amber-300">
@@ -1291,8 +1239,67 @@ export default function ComprasPage() {
       {/* Tabla de Líneas de Compra */}
       {lineas.length > 0 ? (
         <div className="card p-0 overflow-x-auto shadow-xl">
-          <div className="px-4 py-3 border-b border-dark-700 flex justify-between items-center bg-dark-900/50">
-            <h2 className="text-white font-semibold text-sm">Artículos a Ingresar en Inventario</h2>
+          <div className="px-4 py-2.5 border-b border-dark-700 flex flex-wrap justify-between items-center gap-3 bg-dark-900/70">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-white font-bold text-sm">Artículos a Ingresar en Inventario</h2>
+
+              {/* Botones de Estrategia de Costos para Desktop (PC) */}
+              <div className="hidden sm:flex items-center gap-1 bg-dark-800/90 p-1 rounded-xl border border-dark-700">
+                <button
+                  type="button"
+                  onClick={() => handleCambiarEstrategiaGlobal('PROMEDIO_PONDERADO')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    estrategiaCostoGlobal === 'PROMEDIO_PONDERADO'
+                      ? 'bg-primary-600 text-white border-primary-500 shadow-sm shadow-primary-900/40'
+                      : 'bg-dark-900 text-dark-400 border-dark-700 hover:text-white hover:bg-dark-700'
+                  }`}
+                  title="Promedia el costo del stock actual con la compra entrante"
+                >
+                  <span>⚖️ Promedio Ponderado</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCambiarEstrategiaGlobal('COSTO_MAS_ALTO')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    estrategiaCostoGlobal === 'COSTO_MAS_ALTO'
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-sm shadow-amber-900/40'
+                      : 'bg-dark-900 text-dark-400 border-dark-700 hover:text-white hover:bg-dark-700'
+                  }`}
+                  title="Mantiene el costo más alto para proteger el margen de ganancia"
+                >
+                  <span>🛡️ Costo Más Alto (Techo)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCambiarEstrategiaGlobal('ULTIMO_COSTO')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                    estrategiaCostoGlobal === 'ULTIMO_COSTO'
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-900/40'
+                      : 'bg-dark-900 text-dark-400 border-dark-700 hover:text-white hover:bg-dark-700'
+                  }`}
+                  title="Aplica directamente el costo de la factura actual"
+                >
+                  <span>🔄 Último Costo Factura</span>
+                </button>
+              </div>
+
+              {/* Menú Desplegable de Estrategia para Móvil */}
+              <div className="flex sm:hidden items-center gap-1.5">
+                <span className="text-[11px] text-dark-400 font-semibold">Estrategia:</span>
+                <select
+                  value={estrategiaCostoGlobal}
+                  onChange={e => handleCambiarEstrategiaGlobal(e.target.value)}
+                  className="bg-dark-800 text-white border border-dark-600 rounded-lg py-1 px-2 text-xs font-bold focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="PROMEDIO_PONDERADO">⚖️ Promedio Ponderado</option>
+                  <option value="COSTO_MAS_ALTO">🛡️ Costo Más Alto</option>
+                  <option value="ULTIMO_COSTO">🔄 Último Factura</option>
+                </select>
+              </div>
+            </div>
+
             <span className="text-dark-400 text-xs font-mono">{lineas.length} ítems en orden</span>
           </div>
 
@@ -1378,57 +1385,6 @@ export default function ComprasPage() {
                           </span>
                         )}
                       </div>
-
-                      {/* Badge y Switcher de Estrategia de Costo (Promedio Ponderado vs Costo Más Alto) */}
-                      {(l.costo_promedio_ponderado || (l.stock_actual_bd > 0 && l.costo_anterior_bd > 0)) && (
-                        <div className="mt-2 bg-dark-900/90 border border-dark-700 rounded-lg p-2 space-y-1.5 text-[11px]">
-                          <div className="flex items-center justify-between gap-1 text-[10px] text-dark-400">
-                            <span>📦 Stock actual: <strong className="text-dark-200">{l.stock_actual_bd || 0}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_anterior_bd || 0)}</span></span>
-                            <span>📥 Factura: <strong className="text-dark-200">{l.cantidad}</strong> @ <span className="font-mono text-dark-300">{formatCOP(l.costo_factura || l.costo_unitario)}</span></span>
-                          </div>
-                          <div className="flex items-center gap-1 pt-0.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'PROMEDIO_PONDERADO')}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
-                                l.estrategia_costo === 'PROMEDIO_PONDERADO'
-                                  ? 'bg-primary-600 text-white border-primary-500 shadow-sm'
-                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
-                              }`}
-                              title="Costo Promedio Ponderado según stock existente y nueva compra"
-                            >
-                              <span>⚖️ Promedio:</span>
-                              <span className="font-mono">{formatCOP(l.costo_promedio_ponderado || l.costo_unitario)}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'COSTO_MAS_ALTO')}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
-                                l.estrategia_costo === 'COSTO_MAS_ALTO'
-                                  ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
-                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
-                              }`}
-                              title="Usar el costo más alto para proteger margen de ganancia"
-                            >
-                              <span>🛡️ Techo:</span>
-                              <span className="font-mono">{formatCOP(l.costo_mas_alto || l.costo_unitario)}</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCambiarEstrategiaCostoLinea(l.key, 'ULTIMO_COSTO')}
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 border ${
-                                l.estrategia_costo === 'ULTIMO_COSTO'
-                                  ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                  : 'bg-dark-800 text-dark-400 border-dark-700 hover:text-white'
-                              }`}
-                              title="Usar el costo que llegó en esta factura directamente"
-                            >
-                              <span>🔄 Factura:</span>
-                              <span className="font-mono">{formatCOP(l.costo_ultimo || l.costo_factura || l.costo_unitario)}</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </td>
 
                     {/* Cantidad */}
