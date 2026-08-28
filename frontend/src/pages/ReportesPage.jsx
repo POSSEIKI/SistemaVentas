@@ -3,7 +3,7 @@ import { facturasApi, configApi } from '../api/services'
 import ModalTicketFactura from '../components/ticket/ModalTicketFactura'
 import { BarChart2, TrendingUp, FileText, DollarSign, RotateCcw, Ticket, Banknote, X, CheckCircle2, AlertTriangle, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { formatearFechaHora } from '../utils/fechas'
+import { formatearFechaHora, obtenerFechaHoyLocal } from '../utils/fechas'
 
 function formatCOP(n) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0)
@@ -12,7 +12,7 @@ function formatCOP(n) {
 export default function ReportesPage() {
   const [resumen, setResumen] = useState(null)
   const [facturas, setFacturas] = useState([])
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
+  const [fecha, setFecha] = useState(() => obtenerFechaHoyLocal())
   const [cargando, setCargando] = useState(true)
   const [zonaHoraria, setZonaHoraria] = useState('America/Bogota')
 
@@ -39,7 +39,10 @@ export default function ReportesPage() {
 
   useEffect(() => {
     configApi.get().then(cfg => {
-      if (cfg?.zona_horaria) setZonaHoraria(cfg.zona_horaria)
+      if (cfg?.zona_horaria) {
+        setZonaHoraria(cfg.zona_horaria)
+        setFecha(obtenerFechaHoyLocal(cfg.zona_horaria))
+      }
     }).catch(() => {})
   }, [])
 

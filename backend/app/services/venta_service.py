@@ -123,6 +123,7 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
 
     factura = Factura(
         numero=numero,
+        fecha=datetime.now(timezone.utc),
         cliente_id=datos.cliente_id,
         usuario_id=usuario_id,
         subtotal=subtotal,

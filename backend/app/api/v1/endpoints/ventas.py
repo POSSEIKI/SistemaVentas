@@ -5,6 +5,7 @@ from app.db.database import get_db
 from app.core.deps import get_current_user
 from app.models.cliente import Cliente
 from app.models.factura import Factura, FacturaDetalle
+from app.models.configuracion import ConfiguracionEmpresa
 from app.schemas.ventas import (
     ClienteCreate, ClienteUpdate, ClienteOut,
     FacturaCreate, FacturaOut, AnularFacturaRequest,
@@ -12,9 +13,19 @@ from app.schemas.ventas import (
 )
 from app.services import venta_service
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 router = APIRouter(tags=["Ventas"])
+
+async def _obtener_zona_horaria(db: AsyncSession) -> ZoneInfo:
+    res = await db.execute(select(ConfiguracionEmpresa.zona_horaria).where(ConfiguracionEmpresa.id == 1))
+    zh = res.scalar() or "America/Bogota"
+    try:
+        return ZoneInfo(zh)
+    except Exception:
+        return ZoneInfo("America/Bogota")
+
 
 # ─── Clientes ─────────────────────────────────────────────────────────────────
 
@@ -138,12 +149,25 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
 
     res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
     cfg = res_cfg.scalar_one_or_none()
+    tz = await _obtener_zona_horaria(db)
+
+    fecha_dt = f.fecha
+    if fecha_dt:
+        if fecha_dt.tzinfo is None:
+            fecha_dt = fecha_dt.replace(tzinfo=timezone.utc).astimezone(tz)
+        else:
+            fecha_dt = fecha_dt.astimezone(tz)
+        fecha_iso = fecha_dt.isoformat()
+        fecha_fmt = fecha_dt.strftime("%d/%m/%Y %I:%M %p")
+    else:
+        fecha_iso = None
+        fecha_fmt = ""
 
     return {
         "id": f.id,
         "numero": f.numero,
-        "fecha": f.fecha.isoformat() if f.fecha else None,
-        "fecha_formateada": f.fecha.strftime("%d/%m/%Y %I:%M %p") if f.fecha else "",
+        "fecha": fecha_iso,
+        "fecha_formateada": fecha_fmt,
         "subtotal": float(f.subtotal or 0),
         "descuento_valor": float(f.descuento_valor or 0),
         "iva_valor": float(f.iva_valor or 0),
@@ -231,23 +255,40 @@ async def listar_facturas(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    tz = await _obtener_zona_horaria(db)
     query = select(Factura).order_by(Factura.fecha.desc())
     if estado:
         query = query.where(Factura.estado == estado)
     if fecha_inicio:
-        query = query.where(func.date(Factura.fecha) >= fecha_inicio)
+        dt_inicio_local = datetime.combine(fecha_inicio, time.min).replace(tzinfo=tz)
+        dt_inicio_utc = dt_inicio_local.astimezone(timezone.utc)
+        query = query.where(Factura.fecha >= dt_inicio_utc)
     if fecha_fin:
-        query = query.where(func.date(Factura.fecha) <= fecha_fin)
+        dt_fin_local = datetime.combine(fecha_fin, time.max).replace(tzinfo=tz)
+        dt_fin_utc = dt_fin_local.astimezone(timezone.utc)
+        query = query.where(Factura.fecha <= dt_fin_utc)
+    
     result = await db.execute(query.limit(limite))
     facturas = result.scalars().all()
-    return [
-        {
+    
+    res_list = []
+    for f in facturas:
+        fecha_dt = f.fecha
+        if fecha_dt:
+            if fecha_dt.tzinfo is None:
+                fecha_dt = fecha_dt.replace(tzinfo=timezone.utc).astimezone(tz)
+            else:
+                fecha_dt = fecha_dt.astimezone(tz)
+            fecha_iso = fecha_dt.isoformat()
+        else:
+            fecha_iso = None
+
+        res_list.append({
             "id": f.id, "numero": f.numero, "total": float(f.total),
             "estado": f.estado, "forma_pago": f.forma_pago,
-            "cliente_id": f.cliente_id, "fecha": f.fecha.isoformat() if f.fecha else None,
-        }
-        for f in facturas
-    ]
+            "cliente_id": f.cliente_id, "fecha": fecha_iso,
+        })
+    return res_list
 
 @router.get("/facturas/{factura_id}")
 async def get_factura(factura_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
@@ -297,15 +338,26 @@ async def resumen_dia(
     db: AsyncSession = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    from datetime import date as date_type
-    dia = fecha or date_type.today()
+    tz = await _obtener_zona_horaria(db)
+    if fecha is None:
+        ahora_local = datetime.now(tz)
+        dia = ahora_local.date()
+    else:
+        dia = fecha
+
+    dt_inicio_local = datetime.combine(dia, time.min).replace(tzinfo=tz)
+    dt_inicio_utc = dt_inicio_local.astimezone(timezone.utc)
+    dt_fin_local = datetime.combine(dia, time.max).replace(tzinfo=tz)
+    dt_fin_utc = dt_fin_local.astimezone(timezone.utc)
+
     result = await db.execute(
         select(
             func.count(Factura.id).label("total_facturas"),
             func.sum(Factura.total).label("total_ventas"),
             func.sum(Factura.iva_valor).label("total_iva"),
         ).where(
-            func.date(Factura.fecha) == dia,
+            Factura.fecha >= dt_inicio_utc,
+            Factura.fecha <= dt_fin_utc,
             Factura.estado == "EMITIDA",
         )
     )
@@ -316,3 +368,4 @@ async def resumen_dia(
         "total_ventas": float(row.total_ventas or 0),
         "total_iva": float(row.total_iva or 0),
     }
+
