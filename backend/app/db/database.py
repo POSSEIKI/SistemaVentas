@@ -114,6 +114,33 @@ async def init_db() -> None:
                             email='',
                             activo=True
                         ))
+
+                    # Seed Rol SUPER_ADMIN y Usuario superadmin
+                    from app.models.usuario import Usuario, Rol
+                    from app.core.security import hash_password
+                    import json
+
+                    r_rol = await session.execute(select(Rol).where(Rol.nombre == "SUPER_ADMIN"))
+                    rol_super = r_rol.scalar_one_or_none()
+                    if not rol_super:
+                        rol_super = Rol(
+                            nombre="SUPER_ADMIN",
+                            descripcion="Super Administrador Maestro de la Plataforma FACTUR-AAP",
+                            permisos=json.dumps({"administrador_total": True, "super_admin": True}),
+                            activo=True
+                        )
+                        session.add(rol_super)
+                        await session.flush()
+
+                    r_usr = await session.execute(select(Usuario).where(Usuario.username == "superadmin"))
+                    if not r_usr.scalar_one_or_none():
+                        session.add(Usuario(
+                            nombre="Fundador FACTUR-AAP",
+                            username="superadmin",
+                            codigo_hash=hash_password("SuperAdmin2026*"),
+                            rol_id=rol_super.id,
+                            activo=True
+                        ))
                     
                     await session.commit()
             except Exception as e_seed:

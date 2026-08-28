@@ -40,6 +40,7 @@ function AppRoutes() {
         <Route path="/clientes" element={<Navigate to="/parametros?tab=clientes" replace />} />
         <Route path="/reportes" element={null} />
         <Route path="/parametros" element={null} />
+        <Route path="/super-admin" element={null} />
       </Route>
 
       {/* ─── CUALQUIER OTRA RUTA ─── */}

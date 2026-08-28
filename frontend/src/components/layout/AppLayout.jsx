@@ -3,7 +3,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { suscripcionesApi } from '../../api/services'
 import {
   ShoppingCart, Package, BarChart2,
-  Sliders, FileText, LogOut, Menu, Sparkles
+  Sliders, FileText, LogOut, Menu, Sparkles, Crown
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -12,6 +12,7 @@ import ComprasPage from '../../pages/ComprasPage'
 import InventarioPage from '../../pages/InventarioPage'
 import ReportesPage from '../../pages/ReportesPage'
 import ParametrosPage from '../../pages/ParametrosPage'
+import SuperAdminPage from '../../pages/SuperAdminPage'
 
 const NAV_ITEMS = [
   { to: '/ventas',     icon: ShoppingCart, label: 'Ventas' },
@@ -28,6 +29,8 @@ export default function AppLayout() {
   const [hora, setHora] = useState(new Date())
   const [suscripcion, setSuscripcion] = useState(null)
 
+  const esSuperAdmin = usuario?.rol?.nombre === 'SUPER_ADMIN' || usuario?.username === 'superadmin' || usuario?.username === 'admin'
+
   useEffect(() => {
     suscripcionesApi.miSuscripcion()
       .then(setSuscripcion)
@@ -35,6 +38,7 @@ export default function AppLayout() {
   }, [])
 
   const getActiveTab = (pathname) => {
+    if (pathname.startsWith('/super-admin')) return '/super-admin'
     if (pathname.startsWith('/compras')) return '/compras'
     if (pathname.startsWith('/inventario')) return '/inventario'
     if (pathname.startsWith('/reportes')) return '/reportes'
@@ -107,6 +111,23 @@ export default function AppLayout() {
               {label}
             </NavLink>
           ))}
+
+          {/* Botón Exclusivo para el Fundador / Super Admin */}
+          {esSuperAdmin && (
+            <NavLink
+              to="/super-admin"
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 px-3 py-1.5 ml-1 rounded-xl text-xs font-bold transition-all border ${
+                  isActive
+                    ? 'bg-amber-600 border-amber-400 text-white shadow-md shadow-amber-950/50'
+                    : 'bg-amber-950/40 border-amber-600/60 text-amber-300 hover:bg-amber-900/60'
+                }`
+              }
+            >
+              <Crown size={14} className="text-amber-400" />
+              <span>Super Admin</span>
+            </NavLink>
+          )}
         </nav>
 
         <div className="flex items-center gap-4">
@@ -132,6 +153,16 @@ export default function AppLayout() {
             <ShoppingCart size={14} className="text-white" />
           </div>
           <span className="font-bold text-white">FACTUR-AAP</span>
+
+          {esSuperAdmin && (
+            <NavLink
+              to="/super-admin"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-600 text-amber-300 text-[10px] font-bold ml-1"
+            >
+              <Crown size={11} />
+              <span>Admin</span>
+            </NavLink>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-dark-500 text-sm">{horaStr}</span>
@@ -169,6 +200,11 @@ export default function AppLayout() {
         {visitedTabs.has('/parametros') && (
           <div className={activeTab === '/parametros' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <ParametrosPage />
+          </div>
+        )}
+        {visitedTabs.has('/super-admin') && (
+          <div className={activeTab === '/super-admin' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+            <SuperAdminPage />
           </div>
         )}
       </main>

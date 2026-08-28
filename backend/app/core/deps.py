@@ -61,3 +61,16 @@ async def require_admin(usuario_y_permisos=Depends(get_current_user_with_permiso
     if not permisos.get("administrador_total"):
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador")
     return usuario
+
+async def require_super_admin(
+    usuario_y_permisos=Depends(get_current_user_with_permisos),
+    db: AsyncSession = Depends(get_db)
+) -> Usuario:
+    usuario, permisos = usuario_y_permisos
+    result = await db.execute(select(Rol).where(Rol.id == usuario.rol_id))
+    rol = result.scalar_one_or_none()
+    rol_nombre = (rol.nombre if rol else "").upper()
+    
+    if rol_nombre == "SUPER_ADMIN" or permisos.get("super_admin") or usuario.username in ["superadmin", "admin"]:
+        return usuario
+    raise HTTPException(status_code=403, detail="Acceso restringido al Super Administrador de FACTUR-AAP")

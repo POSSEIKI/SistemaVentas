@@ -100,3 +100,12 @@ export const suscripcionesApi = {
   miSuscripcion: () => api.get('/suscripciones/mi-suscripcion').then(r => r.data),
 }
 
+export const superadminApi = {
+  metricas: () => api.get('/superadmin/metricas').then(r => r.data),
+  empresas: (params) => api.get('/superadmin/empresas', { params }).then(r => r.data),
+  extenderPrueba: (id, dias) => api.post(`/superadmin/empresas/${id}/extender-prueba`, { dias }).then(r => r.data),
+  cambiarPlan: (id, datos) => api.post(`/superadmin/empresas/${id}/cambiar-plan`, datos).then(r => r.data),
+  toggleActivo: (id) => api.post(`/superadmin/empresas/${id}/toggle-activo`).then(r => r.data),
+  logsFallos: (limite = 50) => api.get('/superadmin/logs-fallos', { params: { limite } }).then(r => r.data),
+}
+
