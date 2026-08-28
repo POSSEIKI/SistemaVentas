@@ -938,6 +938,12 @@ export default function ComprasPage() {
     }
   }
 
+  // Calcular ancho dinámico en caracteres para que los números quepan siempre sin cortarse y con tope máximo
+  const calcularAnchoInputCh = (valor, minCh = 6, maxCh = 16) => {
+    const len = String(valor !== undefined && valor !== null ? valor : '').length
+    return Math.min(Math.max(len + 2.5, minCh), maxCh)
+  }
+
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4">
       {/* Header y Botones de Acción */}
@@ -1331,18 +1337,18 @@ export default function ComprasPage() {
             <span className="text-dark-400 text-xs font-mono">{lineas.length} ítems en orden</span>
           </div>
 
-          <table className="w-full text-xs">
+          <table className="w-full text-xs min-w-[960px]">
             <thead className="border-b border-dark-700 bg-dark-900/40 text-dark-500 uppercase tracking-wider">
               <tr>
-                <th className="px-3 py-2.5 text-left">Estado</th>
-                <th className="px-3 py-2.5 text-left">Producto / Códigos</th>
-                <th className="px-2 py-2.5 text-center">Cant.</th>
-                <th className="px-2 py-2.5 text-left">Costo Unit. ($)</th>
-                <th className="px-2 py-2.5 text-left">% Ganancia</th>
-                <th className="px-2 py-2.5 text-left">P. Venta Final ($)</th>
-                <th className="px-2 py-2.5 text-center">IVA %</th>
-                <th className="px-3 py-2.5 text-right">Subtotal</th>
-                <th className="px-3 py-2.5 text-center">Acciones</th>
+                <th className="px-3 py-2.5 text-left w-24">Estado</th>
+                <th className="px-3 py-2.5 text-left min-w-[200px]">Producto / Códigos</th>
+                <th className="px-2 py-2.5 text-center min-w-[90px]">Cant.</th>
+                <th className="px-2 py-2.5 text-left min-w-[115px]">Costo Factura ($)</th>
+                <th className="px-2 py-2.5 text-left min-w-[90px]">% Ganancia</th>
+                <th className="px-2 py-2.5 text-left min-w-[130px]">P. Venta Final ($)</th>
+                <th className="px-2 py-2.5 text-center min-w-[70px]">IVA %</th>
+                <th className="px-3 py-2.5 text-right min-w-[105px]">Subtotal</th>
+                <th className="px-3 py-2.5 text-center min-w-[90px]">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-700/60">
@@ -1387,7 +1393,7 @@ export default function ComprasPage() {
                     </td>
 
                     {/* Producto */}
-                    <td className="px-3 py-2 min-w-[220px]">
+                    <td className="px-3 py-2 min-w-[200px]">
                       <p className="text-white font-semibold text-xs leading-tight truncate">{l.nombre}</p>
                       <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-dark-400 mt-0.5">
                         <span className="font-mono bg-dark-900 px-1 rounded border border-dark-700">{l.codigo || 'S/C'}</span>
@@ -1421,7 +1427,8 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        className="input-field w-20 py-1 px-1 text-center font-mono text-xs"
+                        style={{ width: `${calcularAnchoInputCh(l.cantidad, 7, 12)}ch` }}
+                        className="input-field min-w-[70px] max-w-[120px] py-1 px-1.5 text-center font-mono text-xs font-semibold"
                         value={l.cantidad}
                         onChange={e => setLineaCampo(l.key, 'cantidad', parseFloat(e.target.value) || 1)}
                       />
@@ -1433,12 +1440,13 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        className="input-field w-24 py-1 px-2 font-mono text-xs"
+                        style={{ width: `${calcularAnchoInputCh(l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario, 8, 16)}ch` }}
+                        className="input-field min-w-[85px] max-w-[145px] py-1 px-2 font-mono text-xs font-semibold"
                         value={l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario}
                         onChange={e => handleCambioCosto(l.key, e.target.value)}
                       />
                       {l.costo_calculado_producto && Math.abs(l.costo_calculado_producto - (l.costo_factura !== undefined ? l.costo_factura : l.costo_unitario)) > 0.01 && (
-                        <span className="text-[10px] text-primary-300 font-mono block mt-0.5" title="Costo asignado al inventario según estrategia">
+                        <span className="text-[10px] text-primary-300 font-mono block mt-0.5 whitespace-nowrap" title="Costo asignado al inventario según estrategia">
                           Inv: {formatCOP(l.costo_calculado_producto)}
                         </span>
                       )}
@@ -1446,7 +1454,10 @@ export default function ComprasPage() {
 
                     {/* % Ganancia */}
                     <td className="px-2 py-2">
-                      <div className="relative w-20">
+                      <div
+                        style={{ width: `${calcularAnchoInputCh(l.porcentaje_ganancia, 6.5, 10)}ch` }}
+                        className="relative min-w-[68px] max-w-[100px]"
+                      >
                         <input
                           type="number"
                           step="any"
@@ -1464,11 +1475,12 @@ export default function ComprasPage() {
                         type="number"
                         min="0"
                         step="any"
-                        className="input-field w-26 py-1 px-2 font-mono text-xs font-bold text-white border-primary-500/40"
+                        style={{ width: `${calcularAnchoInputCh(l.precio_sugerido, 8, 16)}ch` }}
+                        className="input-field min-w-[90px] max-w-[150px] py-1 px-2 font-mono text-xs font-bold text-white border-primary-500/40"
                         value={l.precio_sugerido}
                         onChange={e => handleCambioPrecioVenta(l.key, e.target.value)}
                       />
-                      <span className="text-[10px] text-green-400 font-mono block mt-0.5">
+                      <span className="text-[10px] text-green-400 font-mono block mt-0.5 whitespace-nowrap">
                         +{formatCOP(Math.max(0, (l.precio_sugerido || 0) - (l.costo_calculado_producto || l.costo_factura || l.costo_unitario)))} util.
                       </span>
                     </td>
@@ -1478,7 +1490,8 @@ export default function ComprasPage() {
                       <input
                         type="number"
                         min="0"
-                        className="input-field w-14 py-1 px-1 text-center font-mono text-xs"
+                        style={{ width: `${calcularAnchoInputCh(l.iva_porcentaje || 0, 5, 8)}ch` }}
+                        className="input-field min-w-[50px] max-w-[75px] py-1 px-1 text-center font-mono text-xs"
                         value={l.iva_porcentaje || 0}
                         onChange={e => setLineaCampo(l.key, 'iva_porcentaje', parseFloat(e.target.value) || 0)}
                       />
