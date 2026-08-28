@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { configApi, productosApi } from '../../api/services'
-import { Settings, Save, Building2, Percent, DollarSign, FileText, Truck, RefreshCw, Sparkles, Globe } from 'lucide-react'
+import { Settings, Save, Building2, Percent, DollarSign, FileText, Truck, RefreshCw, Sparkles, Globe, Zap, ShieldCheck, QrCode, Key, Server, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PAISES_ZONAS_HORARIAS, ZONAS_HORARIAS_POPULARES, obtenerZonaPorPais, obtenerHoraActualEnZona } from '../../utils/fechas'
 
@@ -16,6 +16,9 @@ export default function ParametrosEmpresa() {
   const [form, setForm] = useState({})
   const [guardando, setGuardando] = useState(false)
   const [aplicandoRedondeo, setAplicandoRedondeo] = useState(false)
+  const [probandoFactus, setProbandoFactus] = useState(false)
+  const [rangosFactus, setRangosFactus] = useState([])
+  const [cargandoRangos, setCargandoRangos] = useState(false)
 
   useEffect(() => {
     configApi.get().then(data => {
@@ -25,6 +28,58 @@ export default function ParametrosEmpresa() {
   }, [])
 
   const set = (campo, valor) => setForm(f => ({ ...f, [campo]: valor }))
+
+  const handleProbarFactus = async () => {
+    if (!form.fe_client_id || !form.fe_client_secret) {
+      toast.error('Por favor ingresa Client ID y Client Secret de Factus')
+      return
+    }
+    setProbandoFactus(true)
+    try {
+      const res = await configApi.probarFactus({
+        client_id: form.fe_client_id,
+        client_secret: form.fe_client_secret,
+        ambiente: form.fe_ambiente || 'SANDBOX',
+      })
+      if (res.exito) {
+        toast.success(res.mensaje || '✓ Conexión exitosa con Factus')
+        if (res.rangos?.length) {
+          setRangosFactus(res.rangos)
+        }
+      } else {
+        toast.error(res.mensaje || 'Error al conectar con Factus')
+      }
+    } catch (err) {
+      toast.error('Error de red al conectar con Factus')
+    } finally {
+      setProbandoFactus(false)
+    }
+  }
+
+  const handleCargarRangosFactus = async () => {
+    if (!form.fe_client_id || !form.fe_client_secret) {
+      toast.error('Ingresa primero tus credenciales de Factus')
+      return
+    }
+    setCargandoRangos(true)
+    try {
+      const res = await configApi.rangosFactus({
+        client_id: form.fe_client_id,
+        client_secret: form.fe_client_secret,
+        ambiente: form.fe_ambiente || 'SANDBOX',
+      })
+      if (res.exito && res.rangos?.length) {
+        setRangosFactus(res.rangos)
+        toast.success(`✓ Se encontraron ${res.rangos.length} rangos de numeración activos en Factus`)
+      } else {
+        toast.error(res.mensaje || 'No se encontraron rangos de numeración')
+      }
+    } catch (err) {
+      toast.error('Error al cargar rangos de Factus')
+    } finally {
+      setCargandoRangos(false)
+    }
+  }
 
   const guardar = async (e) => {
     e?.preventDefault()
@@ -164,6 +219,205 @@ export default function ParametrosEmpresa() {
             {obtenerHoraActualEnZona(form.zona_horaria)}
           </span>
         </div>
+      </div>
+
+      {/* ── Facturación Electrónica DIAN & POS Electrónico (Factus API) ─ */}
+      <div className={`card space-y-4 border transition-all ${
+        form.fe_habilitada ? 'border-primary-500/60 bg-gradient-to-br from-dark-800 via-dark-800 to-primary-950/20' : 'border-dark-700'
+      }`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-700 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Zap size={18} className={form.fe_habilitada ? 'text-primary-400 animate-pulse' : 'text-dark-400'} />
+              <h3 className="text-white font-bold text-sm">
+                Facturación Electrónica DIAN & POS Electrónico (Factus API)
+              </h3>
+            </div>
+            <p className="text-dark-400 text-xs mt-0.5">
+              Conecta FACTUR-AAP con el proveedor tecnológico <strong>Factus</strong> para emitir Facturas y POS Electrónico (Res. 165 DIAN) en tiempo real con CUFE y QR.
+            </p>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={!!form.fe_habilitada}
+              onChange={e => set('fe_habilitada', e.target.checked)}
+            />
+            <div className="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            <span className="ml-2 text-xs font-bold text-white">
+              {form.fe_habilitada ? 'HABILITADA' : 'INACTIVA'}
+            </span>
+          </label>
+        </div>
+
+        {form.fe_habilitada && (
+          <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+            {/* Selector de Entorno: Sandbox vs Producción */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-dark-300 mb-1 font-semibold">
+                  🧪 Entorno de Operación Factus / DIAN:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => set('fe_ambiente', 'SANDBOX')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      (form.fe_ambiente || 'SANDBOX') === 'SANDBOX'
+                        ? 'bg-amber-950/70 border-amber-500 text-amber-300 shadow-md ring-1 ring-amber-500/50'
+                        : 'bg-dark-900 border-dark-700 text-dark-400 hover:text-white'
+                    }`}
+                  >
+                    🧪 Sandbox (Pruebas Gratis)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => set('fe_ambiente', 'PRODUCCION')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      form.fe_ambiente === 'PRODUCCION'
+                        ? 'bg-emerald-950/70 border-emerald-500 text-emerald-300 shadow-md ring-1 ring-emerald-500/50'
+                        : 'bg-dark-900 border-dark-700 text-dark-400 hover:text-white'
+                    }`}
+                  >
+                    🚀 Producción (DIAN Real)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-dark-300 mb-1 font-semibold">
+                  📑 Tipo de Documento Electrónico Predeterminado:
+                </label>
+                <select
+                  className="input-field py-2 text-xs font-semibold bg-dark-800"
+                  value={form.fe_tipo_documento || 'POS_ELECTRONICO'}
+                  onChange={e => set('fe_tipo_documento', e.target.value)}
+                >
+                  <option value="POS_ELECTRONICO">🧾 Documento Equivalente Electrónico POS (Res. 165)</option>
+                  <option value="FACTURA_ELECTRONICA">📄 Factura Electrónica de Venta Tradicional (UBL 2.1)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Credenciales Factus API */}
+            <div className="bg-dark-900/80 p-4 rounded-xl border border-dark-700 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-primary-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Key size={14} /> Credenciales de API Factus
+                </span>
+                <a
+                  href={form.fe_ambiente === 'PRODUCCION' ? 'https://app.factus.com.co' : 'https://app-sandbox.factus.com.co'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-primary-400 hover:text-primary-300 underline flex items-center gap-1"
+                >
+                  <span>Abrir consola Factus {form.fe_ambiente === 'PRODUCCION' ? 'Producción' : 'Sandbox'} ↗</span>
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-dark-400 mb-1 font-semibold">
+                    Client ID (Identificador de Cliente) *
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field py-1.5 text-xs font-mono"
+                    placeholder="Ej: 98a7b6c5-4d3e-2f1a-..."
+                    value={form.fe_client_id || ''}
+                    onChange={e => set('fe_client_id', e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-dark-400 mb-1 font-semibold">
+                    Client Secret (Clave Secreta) *
+                  </label>
+                  <input
+                    type="password"
+                    className="input-field py-1.5 text-xs font-mono"
+                    placeholder="••••••••••••••••••••••••"
+                    value={form.fe_client_secret || ''}
+                    onChange={e => set('fe_client_secret', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] text-dark-400 font-semibold">
+                      Rango de Numeración / Resolución ID Factus:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleCargarRangosFactus}
+                      disabled={cargandoRangos}
+                      className="text-[10px] text-primary-400 hover:text-primary-300 underline flex items-center gap-1"
+                    >
+                      {cargandoRangos ? <RefreshCw size={10} className="animate-spin" /> : '🔄 Consultar Rangos'}
+                    </button>
+                  </div>
+
+                  {rangosFactus.length > 0 ? (
+                    <select
+                      className="input-field py-1.5 text-xs font-semibold bg-dark-800 font-mono"
+                      value={form.fe_rango_id || ''}
+                      onChange={e => set('fe_rango_id', e.target.value)}
+                    >
+                      <option value="">-- Selecciona el Rango de Numeración --</option>
+                      {rangosFactus.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.document} - Prefijo: {r.prefix || 'S/P'} ({r.from} al {r.to}) - ID: {r.id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      className="input-field py-1.5 text-xs font-mono"
+                      placeholder="Ej: 8 (o pulsa Consultar Rangos)"
+                      value={form.fe_rango_id || ''}
+                      onChange={e => set('fe_rango_id', e.target.value)}
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] text-dark-400 mb-1 font-semibold">
+                    Código DANE Municipio Emisor:
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field py-1.5 text-xs font-mono"
+                    placeholder="980 (Bogotá D.C.) | 1 (Medellín) | 107 (Cali)"
+                    value={form.fe_municipio_id || '980'}
+                    onChange={e => set('fe_municipio_id', e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Botón Probar Conexión */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-dark-700/80">
+                <p className="text-[11px] text-dark-400">
+                  Pulsa el botón para validar que tus credenciales de Factus sean correctas antes de guardar.
+                </p>
+
+                <button
+                  type="button"
+                  disabled={probandoFactus}
+                  onClick={handleProbarFactus}
+                  className="btn-secondary py-2 px-4 text-xs font-bold flex items-center gap-1.5 hover:text-primary-300 hover:border-primary-500 shadow-sm whitespace-nowrap w-full sm:w-auto justify-center"
+                >
+                  {probandoFactus ? <RefreshCw size={14} className="animate-spin text-primary-400" /> : <Zap size={14} className="text-amber-400" />}
+                  <span>{probandoFactus ? 'Verificando con Factus...' : '⚡ Probar Conexión Factus'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Selector de Rubro / Tipo de Negocio ─────────────────── */}

@@ -54,6 +54,25 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL;"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS pais VARCHAR(100) DEFAULT 'Colombia';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS zona_horaria VARCHAR(100) DEFAULT 'America/Bogota';"))
+                # Columnas Facturación Electrónica DIAN / Factus
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_habilitada BOOLEAN DEFAULT FALSE;"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_proveedor VARCHAR(50) DEFAULT 'FACTUS';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_ambiente VARCHAR(20) DEFAULT 'SANDBOX';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_client_id VARCHAR(255) DEFAULT '';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_client_secret VARCHAR(255) DEFAULT '';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_token VARCHAR(1000) DEFAULT '';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_rango_id VARCHAR(50) DEFAULT '';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_tipo_documento VARCHAR(50) DEFAULT 'POS_ELECTRONICO';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_municipio_id VARCHAR(20) DEFAULT '980';"))
+                # Columnas en facturas para CUFE y QR
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS cufe VARCHAR(255);"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS qr_cadena TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS qr_imagen_base64 TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_estado VARCHAR(30) DEFAULT 'NO_ENVIADA';"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_xml_url TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_pdf_url TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_errores TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_numero_oficial VARCHAR(50);"))
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:

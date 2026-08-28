@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Printer, Mail, MessageSquare, X, Check,
-  FileText, Copy, Download, Image as ImageIcon, Send
+  FileText, Copy, Download, Image as ImageIcon, Send,
+  Zap, QrCode, ShieldCheck, ExternalLink, RefreshCw
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatCOP } from '../../utils/pricing'
 import { formatearFechaHora } from '../../utils/fechas'
-import { clientesApi } from '../../api/services'
+import { clientesApi, facturasApi } from '../../api/services'
 import {
   copiarTicketComoImagen,
   generarTicketPDFFile,
@@ -14,6 +15,7 @@ import {
 } from '../../utils/ticketExporter'
 
 export default function ModalTicketFactura({ factura, onCerrar, formatoInicial = '80MM' }) {
+  const [facturaActual, setFacturaActual] = useState(factura)
   const [formato, setFormato] = useState(formatoInicial || factura?.empresa?.formato_impresion || '80MM')
   
   // Modales secundarios
@@ -28,18 +30,39 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
   const [copiandoImagen, setCopiandoImagen] = useState(false)
   const [generandoPdf, setGenerandoPdf] = useState(false)
   const [enviandoWhatsapp, setEnviandoWhatsapp] = useState(false)
+  const [emitiendoDian, setEmitiendoDian] = useState(false)
 
   const ticketRef = useRef(null)
 
   useEffect(() => {
+    setFacturaActual(factura)
     if (factura?.empresa?.formato_impresion) {
       setFormato(factura.empresa.formato_impresion)
     }
   }, [factura])
 
-  if (!factura) return null
+  if (!facturaActual) return null
 
-  const { empresa = {}, cliente = {}, cajero = {}, lineas = [] } = factura || {}
+  const handleEmitirDian = async () => {
+    setEmitiendoDian(true)
+    try {
+      const res = await facturasApi.emitirDian(facturaActual.id)
+      if (res.resultado?.exito) {
+        toast.success(res.resultado.mensaje || '✓ Factura validada por la DIAN exitosamente')
+        if (res.factura) {
+          setFacturaActual(res.factura)
+        }
+      } else {
+        toast.error(res.resultado?.mensaje || 'La DIAN no aceptó el documento')
+      }
+    } catch (err) {
+      toast.error('Error de comunicación con el servicio DIAN')
+    } finally {
+      setEmitiendoDian(false)
+    }
+  }
+
+  const { empresa = {}, cliente = {}, cajero = {}, lineas = [] } = facturaActual || {}
 
   // ─── Generación de Texto para WhatsApp / Correo ─────────────────────────────
   const generarTextoResumen = () => {
@@ -424,24 +447,59 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                     )}
                     <div className="flex justify-between text-base font-black text-gray-900 pt-2 border-t border-gray-300">
                       <span>TOTAL A PAGAR:</span>
-                      <span className="font-mono text-primary-700">{formatCOP(factura.total)}</span>
+                      <span className="font-mono text-primary-700">{formatCOP(facturaActual.total)}</span>
                     </div>
-                    {factura.valor_recibido > 0 && (
+                    {facturaActual.valor_recibido > 0 && (
                       <div className="flex justify-between text-[11px] text-gray-600 pt-1">
-                        <span>Recibido: {formatCOP(factura.valor_recibido)}</span>
-                        <span>Cambio: <strong className="text-gray-900">{formatCOP(factura.cambio)}</strong></span>
+                        <span>Recibido: {formatCOP(facturaActual.valor_recibido)}</span>
+                        <span>Cambio: <strong className="text-gray-900">{formatCOP(facturaActual.cambio)}</strong></span>
                       </div>
                     )}
                   </div>
                 </div>
 
+                {/* Sección Oficial DIAN / CUFE Carta */}
+                {(facturaActual.cufe || facturaActual.qr_cadena || facturaActual.qr_imagen_base64) && (
+                  <div className="my-3 p-3 border border-gray-300 rounded-lg bg-gray-50 flex items-center justify-between gap-4">
+                    <div className="space-y-1 text-left flex-1">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
+                        <ShieldCheck size={16} className="text-emerald-600" />
+                        <span>DOCUMENTO ELECTRÓNICO VALIDADO POR LA DIAN</span>
+                      </div>
+                      <p className="text-[10px] text-gray-600 font-mono break-all leading-tight">
+                        <strong>CUFE:</strong> {facturaActual.cufe}
+                      </p>
+                      {facturaActual.dian_numero_oficial && (
+                        <p className="text-[10px] text-gray-600">
+                          <strong>N° Oficial DIAN:</strong> {facturaActual.dian_numero_oficial}
+                        </p>
+                      )}
+                      <p className="text-[9px] text-gray-500">
+                        Consulte la validez de este documento escaneando el código QR oficial.
+                      </p>
+                    </div>
+                    <div className="flex-shrink-0 text-center">
+                      {facturaActual.qr_imagen_base64 ? (
+                        <img src={facturaActual.qr_imagen_base64} alt="QR DIAN" className="w-20 h-20 border border-gray-300 rounded p-0.5 bg-white mx-auto" />
+                      ) : facturaActual.qr_cadena ? (
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(facturaActual.qr_cadena)}`}
+                          alt="QR DIAN"
+                          className="w-20 h-20 border border-gray-300 rounded p-0.5 bg-white mx-auto"
+                        />
+                      ) : null}
+                      <span className="text-[8px] text-gray-500 font-bold block mt-0.5">QR OFICIAL DIAN</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Pie Carta */}
-                <div className="text-center pt-6 border-t border-gray-200 text-xs text-gray-500 space-y-1">
+                <div className="text-center pt-4 border-t border-gray-200 text-xs text-gray-500 space-y-1">
                   <p className="font-bold text-gray-700">{empresa?.mensaje_factura || '¡Gracias por su compra!'}</p>
                   {empresa?.resolucion_dian && (
                     <p className="text-[10px] text-gray-400 font-mono">{empresa.resolucion_dian}</p>
                   )}
-                  <p className="text-[10px] text-gray-400">Software SistemaVentas POS</p>
+                  <p className="text-[10px] text-gray-400">Software FACTUR-AAP POS</p>
                 </div>
               </div>
             ) : (
@@ -545,19 +603,43 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                     <span>FORMA PAGO:</span>
                     <span className="font-bold text-gray-900">{factura.forma_pago}</span>
                   </div>
-                  {factura.valor_recibido > 0 && (
+                  {facturaActual.valor_recibido > 0 && (
                     <>
                       <div className="flex justify-between text-[9px]">
                         <span>RECIBIDO:</span>
-                        <span>{formatCOP(factura.valor_recibido)}</span>
+                        <span>{formatCOP(facturaActual.valor_recibido)}</span>
                       </div>
                       <div className="flex justify-between text-[10px] font-bold">
                         <span>CAMBIO:</span>
-                        <span>{formatCOP(factura.cambio)}</span>
+                        <span>{formatCOP(facturaActual.cambio)}</span>
                       </div>
                     </>
                   )}
                 </div>
+
+                {/* Sección Oficial DIAN / CUFE Térmica */}
+                {(facturaActual.cufe || facturaActual.qr_cadena || facturaActual.qr_imagen_base64) && (
+                  <div className="border-t border-dashed border-gray-400 pt-2 space-y-1.5 text-center">
+                    <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-gray-900">
+                      <span>⚡</span>
+                      <span>DOCUMENTO ELECTRÓNICO DIAN</span>
+                    </div>
+                    {facturaActual.qr_imagen_base64 ? (
+                      <img src={facturaActual.qr_imagen_base64} alt="QR DIAN" className="w-24 h-24 mx-auto border border-gray-300 rounded p-0.5 bg-white" />
+                    ) : facturaActual.qr_cadena ? (
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(facturaActual.qr_cadena)}`}
+                        alt="QR DIAN"
+                        className="w-24 h-24 mx-auto border border-gray-300 rounded p-0.5 bg-white"
+                      />
+                    ) : null}
+                    {facturaActual.cufe && (
+                      <p className="text-[8px] font-mono text-gray-600 break-all leading-none px-1">
+                        CUFE: {facturaActual.cufe}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Pie Térmico */}
                 <div className="border-t border-dashed border-gray-400 pt-2 text-center text-[9px] space-y-1 text-gray-600">
@@ -572,7 +654,7 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
           </div>
         </div>
 
-        {/* ── Footer con las 5 Acciones Priorizadas por Relevancia ──────────────── */}
+        {/* ── Footer con las Acciones Priorizadas por Relevancia ──────────────── */}
         <div className="px-5 py-3.5 bg-dark-800 border-t border-dark-700 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 flex-wrap">
             {/* 1. IMPRIMIR - Botón Principal Predeterminado */}
@@ -633,6 +715,36 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
               <Download size={14} />
               <span>{generandoPdf ? 'Descargando...' : '📄 Descargar PDF'}</span>
             </button>
+
+            {/* 6. EMISIÓN DIAN / FACTUS */}
+            {facturaActual.dian_estado === 'VALIDADA' ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-600/50 text-emerald-300 text-xs font-bold">
+                <ShieldCheck size={14} className="text-emerald-400" />
+                <span>DIAN Validada</span>
+                {facturaActual.dian_pdf_url && (
+                  <a
+                    href={facturaActual.dian_pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-1 text-primary-400 hover:underline flex items-center gap-0.5 text-[11px]"
+                  >
+                    <span>PDF Factus</span>
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEmitirDian}
+                disabled={emitiendoDian}
+                className="py-2 px-3 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 border border-amber-600/60 text-amber-300 text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                title="Emitir esta factura a la DIAN mediante Factus API"
+              >
+                {emitiendoDian ? <RefreshCw size={13} className="animate-spin text-amber-400" /> : <Zap size={13} className="text-amber-400" />}
+                <span>{emitiendoDian ? 'Emitiendo a DIAN...' : '⚡ Emitir DIAN'}</span>
+              </button>
+            )}
           </div>
 
           {/* Siguiente Venta */}

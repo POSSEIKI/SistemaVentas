@@ -178,6 +178,15 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
         "cambio": float(f.cambio or 0),
         "observaciones": f.observaciones,
         "estado": f.estado,
+        # Facturación Electrónica DIAN
+        "cufe": f.cufe,
+        "qr_cadena": f.qr_cadena,
+        "qr_imagen_base64": f.qr_imagen_base64,
+        "dian_estado": f.dian_estado or "NO_ENVIADA",
+        "dian_xml_url": f.dian_xml_url,
+        "dian_pdf_url": f.dian_pdf_url,
+        "dian_errores": f.dian_errores,
+        "dian_numero_oficial": f.dian_numero_oficial,
         "cliente": {
             "id": f.cliente.id if f.cliente else 1,
             "nombre": f.cliente.nombre if f.cliente else "CLIENTE MOSTRADOR (CONSUMIDOR FINAL)",
@@ -244,6 +253,17 @@ async def crear_factura(
     usuario=Depends(get_current_user),
 ):
     factura = await venta_service.crear_factura(datos, usuario.id, db)
+
+    # Si la empresa tiene habilitada la Facturación Electrónica DIAN / Factus, emitir automáticamente
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    cfg = res_cfg.scalar_one_or_none()
+    if cfg and cfg.fe_habilitada and cfg.fe_client_id and cfg.fe_client_secret:
+        try:
+            from app.services.factus_service import enviar_factura_a_dian
+            await enviar_factura_a_dian(factura.id, db)
+        except Exception:
+            pass
+
     return await _formatear_factura_completa(factura.id, db)
 
 @router.get("/facturas")
@@ -287,8 +307,26 @@ async def listar_facturas(
             "id": f.id, "numero": f.numero, "total": float(f.total),
             "estado": f.estado, "forma_pago": f.forma_pago,
             "cliente_id": f.cliente_id, "fecha": fecha_iso,
+            "cufe": f.cufe,
+            "dian_estado": f.dian_estado or "NO_ENVIADA",
+            "dian_numero_oficial": f.dian_numero_oficial,
         })
     return res_list
+
+@router.post("/facturas/{factura_id}/emitir-dian")
+async def emitir_factura_dian(
+    factura_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    from app.services.factus_service import enviar_factura_a_dian
+    resultado = await enviar_factura_a_dian(factura_id, db)
+    factura_act = await _formatear_factura_completa(factura_id, db)
+    return {
+        "resultado": resultado,
+        "factura": factura_act,
+    }
+
 
 @router.get("/facturas/{factura_id}")
 async def get_factura(factura_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):

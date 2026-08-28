@@ -30,6 +30,15 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), _=Depends(get_cu
         "resolucion_dian": getattr(config, "resolucion_dian", "") or "",
         "pais": getattr(config, "pais", "Colombia") or "Colombia",
         "zona_horaria": getattr(config, "zona_horaria", "America/Bogota") or "America/Bogota",
+        # Facturación Electrónica DIAN / Factus
+        "fe_habilitada": bool(getattr(config, "fe_habilitada", False)),
+        "fe_proveedor": getattr(config, "fe_proveedor", "FACTUS") or "FACTUS",
+        "fe_ambiente": getattr(config, "fe_ambiente", "SANDBOX") or "SANDBOX",
+        "fe_client_id": getattr(config, "fe_client_id", "") or "",
+        "fe_client_secret": getattr(config, "fe_client_secret", "") or "",
+        "fe_rango_id": getattr(config, "fe_rango_id", "") or "",
+        "fe_tipo_documento": getattr(config, "fe_tipo_documento", "POS_ELECTRONICO") or "POS_ELECTRONICO",
+        "fe_municipio_id": getattr(config, "fe_municipio_id", "980") or "980",
     }
 
 @router.patch("/empresa")
@@ -50,9 +59,34 @@ async def actualizar_configuracion(
         "domicilio_corta", "domicilio_media", "domicilio_larga", "rubro",
         "margen_ganancia_predeterminado", "modo_redondeo",
         "formato_impresion", "resolucion_dian", "pais", "zona_horaria",
+        "fe_habilitada", "fe_proveedor", "fe_ambiente", "fe_client_id",
+        "fe_client_secret", "fe_rango_id", "fe_tipo_documento", "fe_municipio_id",
     ]
     for campo, valor in datos.items():
         if campo in campos_permitidos:
             setattr(config, campo, valor)
     await db.commit()
     return {"mensaje": "Configuración actualizada"}
+
+@router.post("/factus/probar-conexion")
+async def probar_conexion_factus(
+    datos: dict,
+    _=Depends(require_admin),
+):
+    from app.services.factus_service import probar_conexion
+    client_id = datos.get("client_id", "")
+    client_secret = datos.get("client_secret", "")
+    ambiente = datos.get("ambiente", "SANDBOX")
+    return await probar_conexion(client_id, client_secret, ambiente)
+
+@router.post("/factus/rangos-numeracion")
+async def consultar_rangos_factus(
+    datos: dict,
+    _=Depends(require_admin),
+):
+    from app.services.factus_service import obtener_rangos_numeracion
+    client_id = datos.get("client_id", "")
+    client_secret = datos.get("client_secret", "")
+    ambiente = datos.get("ambiente", "SANDBOX")
+    return await obtener_rangos_numeracion(client_id, client_secret, ambiente)
+

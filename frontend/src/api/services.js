@@ -49,6 +49,7 @@ export const facturasApi = {
   anular: (id, motivo) => api.post(`/facturas/${id}/anular`, { motivo }).then(r => r.data),
   devolucion: (id, datos) => api.post(`/facturas/${id}/devolucion`, datos).then(r => r.data),
   resumenDia: (fecha) => api.get('/reportes/resumen-dia', { params: fecha ? { fecha } : {} }).then(r => r.data),
+  emitirDian: (id) => api.post(`/facturas/${id}/emitir-dian`).then(r => r.data),
 }
 
 export const bonosApi = {
@@ -80,6 +81,8 @@ export const inventarioApi = {
 export const configApi = {
   get: () => api.get('/configuracion/empresa').then(r => r.data),
   update: (datos) => api.patch('/configuracion/empresa', datos).then(r => r.data),
+  probarFactus: (datos) => api.post('/configuracion/factus/probar-conexion', datos).then(r => r.data),
+  rangosFactus: (datos) => api.post('/configuracion/factus/rangos-numeracion', datos).then(r => r.data),
 }
 
 export const suscripcionesApi = {

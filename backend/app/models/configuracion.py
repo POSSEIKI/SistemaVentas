@@ -29,4 +29,15 @@ class ConfiguracionEmpresa(Base):
     pais = Column(String(100), default="Colombia")
     zona_horaria = Column(String(100), default="America/Bogota")
     primer_inicio = Column(Boolean, default=True)
+    # Facturación Electrónica DIAN / Factus
+    fe_habilitada = Column(Boolean, default=False)
+    fe_proveedor = Column(String(50), default="FACTUS")
+    fe_ambiente = Column(String(20), default="SANDBOX") # SANDBOX | PRODUCCION
+    fe_client_id = Column(String(255), default="")
+    fe_client_secret = Column(String(255), default="")
+    fe_token = Column(String(1000), default="")
+    fe_rango_id = Column(String(50), default="")
+    fe_tipo_documento = Column(String(50), default="POS_ELECTRONICO") # POS_ELECTRONICO | FACTURA_ELECTRONICA
+    fe_municipio_id = Column(String(20), default="980") # Código DANE municipio (default Bogotá 980)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+

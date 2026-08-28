@@ -142,15 +142,27 @@ export default function ReportesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                      f.estado === 'EMITIDA'
-                        ? 'bg-green-500/10 text-green-400 border-green-500/30'
-                        : f.estado === 'DEVUELTA'
-                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                        : 'bg-red-500/10 text-red-400 border-red-500/30'
-                    }`}>
-                      {f.estado}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                        f.estado === 'EMITIDA'
+                          ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                          : f.estado === 'DEVUELTA'
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          : 'bg-red-500/10 text-red-400 border-red-500/30'
+                      }`}>
+                        {f.estado}
+                      </span>
+                      {f.dian_estado === 'VALIDADA' && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700 font-mono" title="Factura validada y aceptada por la DIAN">
+                          ⚡ DIAN
+                        </span>
+                      )}
+                      {f.dian_estado === 'RECHAZADA' && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-red-950/80 text-red-300 border border-red-700 font-mono" title="Rechazada por la DIAN">
+                          ⚠️ DIAN
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right text-primary-400 font-bold font-mono">
                     {formatCOP(f.total)}
