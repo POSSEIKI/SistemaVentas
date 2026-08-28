@@ -1,16 +1,20 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Crown, Users, Building2, DollarSign, Activity, AlertTriangle,
   CheckCircle, RefreshCw, Search, Phone, Mail, Clock, Plus,
   Sparkles, Zap, Shield, ArrowUpRight, MessageSquare, Lock, Unlock,
-  Sliders, FileText, ChevronRight, X, ExternalLink
+  Sliders, FileText, ChevronRight, X, ExternalLink, ShoppingCart, LogOut
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../stores/authStore'
 import { superadminApi } from '../api/services'
 import { formatCOP } from '../utils/pricing'
 import { formatearFechaHora } from '../utils/fechas'
 
 export default function SuperAdminPage() {
+  const navigate = useNavigate()
+  const { logout } = useAuthStore()
   const [tabActiva, setTabActiva] = useState('metricas') // metricas | empresas | logs
   const [metricas, setMetricas] = useState(null)
   const [empresas, setEmpresas] = useState([])
@@ -135,15 +139,41 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={cargarDatos}
-          disabled={cargando}
-          className="btn-secondary py-2 px-3.5 text-xs font-bold flex items-center justify-center gap-1.5 self-start sm:self-auto hover:border-amber-500 hover:text-amber-300"
-        >
-          <RefreshCw size={14} className={cargando ? 'animate-spin text-amber-400' : ''} />
-          <span>{cargando ? 'Actualizando...' : 'Actualizar Datos'}</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => navigate('/ventas')}
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-emerald-500 hover:text-emerald-300"
+            title="Ir al Punto de Venta"
+          >
+            <ShoppingCart size={14} className="text-emerald-400" />
+            <span className="hidden sm:inline">Punto de Venta (POS)</span>
+            <span className="sm:hidden">POS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={cargarDatos}
+            disabled={cargando}
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-amber-500 hover:text-amber-300"
+          >
+            <RefreshCw size={14} className={cargando ? 'animate-spin text-amber-400' : ''} />
+            <span className="hidden sm:inline">{cargando ? 'Actualizando...' : 'Actualizar'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 text-dark-400 hover:text-red-400 hover:border-red-600"
+            title="Cerrar sesión"
+          >
+            <LogOut size={14} />
+            <span className="hidden sm:inline">Cerrar Sesión</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Selector de Pestañas ───────────────────────────────── */}

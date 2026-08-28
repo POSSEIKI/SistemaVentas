@@ -31,7 +31,13 @@ export default function LoginPage() {
         permisos: data.permisos,
       })
       toast.success(`¡Bienvenido, ${data.nombre}!`)
-      navigate('/ventas')
+      
+      const esSuper = data.rol === 'SUPER_ADMIN' || data.permisos?.super_admin || data.username === 'superadmin'
+      if (esSuper) {
+        navigate('/super-admin')
+      } else {
+        navigate('/ventas')
+      }
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Error al iniciar sesión')
     } finally {
