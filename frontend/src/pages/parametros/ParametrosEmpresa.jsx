@@ -254,48 +254,48 @@ export default function ParametrosEmpresa() {
   }
 
   return (
-    <form onSubmit={guardar} className="space-y-5 max-w-3xl">
+    <form onSubmit={guardar} className="space-y-3.5 sm:space-y-5 w-full max-w-full min-w-0">
       {/* ── Encabezado ────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-dark-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-dark-700 w-full min-w-0">
         <div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Settings size={20} className="text-primary-500" />
-            Parámetros Generales y Datos de la Empresa
+          <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <Settings size={18} className="text-primary-500 flex-shrink-0" />
+            <span>Parámetros Generales y Empresa</span>
           </h2>
-          <p className="text-dark-400 text-xs mt-0.5">
-            Configuración fiscal, país de origen, zona horaria, márgenes globales y tarifas de domicilio
+          <p className="text-dark-400 text-[11px] sm:text-xs mt-0.5">
+            Configuración fiscal, país, zona horaria, márgenes y reglas
           </p>
         </div>
 
         <button
           type="submit"
           disabled={guardando}
-          className="btn-primary flex items-center gap-2 py-2 px-5 font-bold text-xs shadow-lg self-start sm:self-auto"
+          className="btn-primary flex items-center justify-center gap-1.5 py-2 px-4 font-bold text-xs shadow-lg w-full sm:w-auto self-start sm:self-auto"
         >
-          {guardando ? <RefreshCw size={15} className="animate-spin" /> : <Save size={16} />}
+          {guardando ? <RefreshCw size={14} className="animate-spin" /> : <Save size={15} />}
           <span>{guardando ? 'Guardando...' : 'Guardar Cambios'}</span>
         </button>
       </div>
 
       {/* ── Selector de País de Origen y Zona Horaria ────────────── */}
-      <div className="card space-y-4">
+      <div className="card space-y-3 sm:space-y-4">
         <div>
-          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-            <Globe size={16} className="text-primary-400" />
-            🌍 País de Origen y Zona Horaria Oficial
+          <h3 className="text-white font-semibold text-xs sm:text-sm flex items-center gap-2">
+            <Globe size={15} className="text-primary-400 flex-shrink-0" />
+            <span>🌍 País de Origen y Zona Horaria Oficial</span>
           </h3>
-          <p className="text-dark-400 text-xs">
+          <p className="text-dark-400 text-[11px] sm:text-xs mt-0.5">
             Ajusta automáticamente la fecha y hora de emisión en facturas, tickets, reportes y ventas según tu país.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-dark-400 mb-1 font-semibold">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 w-full min-w-0">
+          <div className="w-full min-w-0">
+            <label className="block text-[11px] sm:text-xs text-dark-400 mb-1 font-semibold">
               País del Negocio (Configura automáticamente la hora recomendada)
             </label>
             <select
-              className="input-field py-2 text-xs font-semibold bg-dark-800"
+              className="input-field py-1.5 sm:py-2 text-xs font-semibold bg-dark-800 w-full max-w-full min-w-0 truncate"
               value={form.pais || 'Colombia'}
               onChange={e => {
                 const nuevoPais = e.target.value
@@ -317,12 +317,12 @@ export default function ParametrosEmpresa() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs text-dark-400 mb-1 font-semibold">
+          <div className="w-full min-w-0">
+            <label className="block text-[11px] sm:text-xs text-dark-400 mb-1 font-semibold">
               Zona Horaria IANA (Cálculo de fechas exactas)
             </label>
             <select
-              className="input-field py-2 text-xs font-mono bg-dark-800"
+              className="input-field py-1.5 sm:py-2 text-xs font-mono bg-dark-800 w-full max-w-full min-w-0 truncate"
               value={form.zona_horaria || 'America/Bogota'}
               onChange={e => set('zona_horaria', e.target.value)}
             >
@@ -335,16 +335,16 @@ export default function ParametrosEmpresa() {
           </div>
         </div>
 
-        <div className="bg-dark-900/70 p-3 rounded-xl border border-primary-600/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div>
-            <span className="text-white font-semibold flex items-center gap-1.5">
+        <div className="bg-dark-900/70 p-2.5 sm:p-3 rounded-xl border border-primary-600/30 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs w-full min-w-0">
+          <div className="min-w-0">
+            <span className="text-white font-semibold flex items-center gap-1 text-[11px] sm:text-xs">
               <span>🕒</span> Vista Previa en Tiempo Real de la Fecha y Hora:
             </span>
-            <p className="text-dark-400 text-[11px] mt-0.5">
+            <p className="text-dark-400 text-[10px] sm:text-[11px] mt-0.5 leading-tight">
               Esta es la hora exacta que se imprimirá en facturas, tickets POS y reportes contables.
             </p>
           </div>
-          <span className="font-mono text-emerald-400 font-bold bg-dark-950 px-3 py-1.5 rounded-lg border border-emerald-800/40 whitespace-nowrap">
+          <span className="font-mono text-emerald-400 font-bold bg-dark-950 px-2.5 py-1 rounded-lg border border-emerald-800/40 whitespace-nowrap text-xs self-start sm:self-auto flex-shrink-0">
             {obtenerHoraActualEnZona(form.zona_horaria)}
           </span>
         </div>

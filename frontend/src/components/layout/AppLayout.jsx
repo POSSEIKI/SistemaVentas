@@ -145,29 +145,29 @@ export default function AppLayout() {
       </header>
 
       {/* ── Contenido Principal con Persistencia de Vistas (Keep-Alive) ─── */}
-      <main className="flex-1 overflow-auto pb-20 md:pb-0 relative flex flex-col">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full pb-20 md:pb-0 relative flex flex-col min-w-0">
         {visitedTabs.has('/ventas') && (
-          <div className={activeTab === '/ventas' ? 'flex-1 flex flex-col' : 'hidden'}>
+          <div className={activeTab === '/ventas' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <VentasPage />
           </div>
         )}
         {visitedTabs.has('/compras') && (
-          <div className={activeTab === '/compras' ? 'flex-1 flex flex-col' : 'hidden'}>
+          <div className={activeTab === '/compras' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <ComprasPage />
           </div>
         )}
         {visitedTabs.has('/inventario') && (
-          <div className={activeTab === '/inventario' ? 'flex-1 flex flex-col' : 'hidden'}>
+          <div className={activeTab === '/inventario' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <InventarioPage />
           </div>
         )}
         {visitedTabs.has('/reportes') && (
-          <div className={activeTab === '/reportes' ? 'flex-1 flex flex-col' : 'hidden'}>
+          <div className={activeTab === '/reportes' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <ReportesPage />
           </div>
         )}
         {visitedTabs.has('/parametros') && (
-          <div className={activeTab === '/parametros' ? 'flex-1 flex flex-col' : 'hidden'}>
+          <div className={activeTab === '/parametros' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
             <ParametrosPage />
           </div>
         )}

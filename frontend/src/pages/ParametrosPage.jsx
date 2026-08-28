@@ -34,22 +34,22 @@ export default function ParametrosPage() {
   }
 
   return (
-    <div className="p-4 max-w-6xl mx-auto space-y-4">
+    <div className="p-2.5 sm:p-4 w-full max-w-6xl mx-auto space-y-3 sm:space-y-4 min-w-0 overflow-x-hidden">
       {/* ── Encabezado Principal del Módulo ────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Sliders size={22} className="text-primary-500" />
-            Centro de Parametrización
+          <h1 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+            <Sliders size={20} className="text-primary-500 flex-shrink-0" />
+            <span>Centro de Parametrización</span>
           </h1>
-          <p className="text-dark-400 text-xs mt-0.5">
-            Configuración integral de maestros: Productos, Clientes, Proveedores y Parámetros del Sistema
+          <p className="text-dark-400 text-[11px] sm:text-xs mt-0.5 leading-snug">
+            Configuración de Productos, Clientes, Proveedores y Parámetros del Sistema
           </p>
         </div>
       </div>
 
       {/* ── Pestañas de Navegación del Módulo ───────────────────── */}
-      <div className="flex items-center gap-2 border-b border-dark-700 pb-1 overflow-x-auto">
+      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-dark-700 pb-1.5 overflow-x-auto no-scrollbar w-full max-w-full">
         {TABS.map(tab => {
           const Icon = tab.icon
           const activo = tabActiva === tab.id
@@ -58,13 +58,13 @@ export default function ParametrosPage() {
             <button
               key={tab.id}
               onClick={() => cambiarTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-semibold text-xs transition-all whitespace-nowrap flex-shrink-0 ${
                 activo
-                  ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/30'
+                  ? 'bg-primary-600 text-white shadow-md shadow-primary-900/30'
                   : 'text-dark-400 hover:text-white hover:bg-dark-800'
               }`}
             >
-              <Icon size={16} />
+              <Icon size={15} />
               <span>{tab.label}</span>
             </button>
           )
@@ -72,7 +72,7 @@ export default function ParametrosPage() {
       </div>
 
       {/* ── Contenido de la Pestaña Activa ──────────────────────── */}
-      <div className="pt-2">
+      <div className="pt-1 w-full max-w-full min-w-0">
         {tabActiva === 'productos' && <ParametrosProductos />}
         {tabActiva === 'clientes' && <ParametrosClientes />}
         {tabActiva === 'proveedores' && <ParametrosProveedores />}
