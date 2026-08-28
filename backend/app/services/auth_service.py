@@ -55,6 +55,8 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
     config.ciudad = request.empresa_ciudad or ""
     config.direccion = request.empresa_direccion or ""
     config.rubro = request.rubro or "FARMACIA"
+    config.pais = getattr(request, "pais", "Colombia") or "Colombia"
+    config.zona_horaria = getattr(request, "zona_horaria", "America/Bogota") or "America/Bogota"
     config.primer_inicio = False
 
     await db.commit()

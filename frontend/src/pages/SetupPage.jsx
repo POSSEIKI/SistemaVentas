@@ -4,6 +4,8 @@ import { authApi } from '../api/services'
 import { ShoppingCart, CheckCircle, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+import { PAISES_ZONAS_HORARIAS, obtenerZonaPorPais, obtenerHoraActualEnZona } from '../utils/fechas'
+
 const PASOS = ['Administrador', 'Empresa']
 
 export default function SetupPage({ onSetupComplete }) {
@@ -22,9 +24,21 @@ export default function SetupPage({ onSetupComplete }) {
     empresa_telefono: '',
     empresa_ciudad: '',
     empresa_direccion: '',
+    rubro: 'FARMACIA',
+    pais: 'Colombia',
+    zona_horaria: 'America/Bogota',
   })
 
   const set = (campo, valor) => setForm(f => ({ ...f, [campo]: valor }))
+
+  const handleCambiarPais = (paisNombre) => {
+    const zonaAuto = obtenerZonaPorPais(paisNombre)
+    setForm(f => ({
+      ...f,
+      pais: paisNombre,
+      zona_horaria: zonaAuto,
+    }))
+  }
 
   const validarPaso1 = () => {
     if (!form.admin_nombre.trim()) return 'Ingresa tu nombre completo'
@@ -57,6 +71,9 @@ export default function SetupPage({ onSetupComplete }) {
         empresa_telefono: form.empresa_telefono,
         empresa_ciudad: form.empresa_ciudad,
         empresa_direccion: form.empresa_direccion,
+        rubro: form.rubro || 'FARMACIA',
+        pais: form.pais || 'Colombia',
+        zona_horaria: form.zona_horaria || 'America/Bogota',
       })
       toast.success('¡Sistema configurado! Ahora inicia sesión.')
       onSetupComplete?.()
@@ -190,6 +207,30 @@ export default function SetupPage({ onSetupComplete }) {
                       <span>{r.label}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* País de Origen y Zona Horaria Automática */}
+              <div className="bg-dark-900/60 p-3 rounded-xl border border-dark-700 space-y-2">
+                <label className="block text-xs font-semibold text-primary-400 uppercase tracking-wider">
+                  🌍 País de Origen (Configura la hora y fecha automáticamente) *
+                </label>
+                <select
+                  className="input-field py-2 text-xs font-semibold bg-dark-800"
+                  value={form.pais || 'Colombia'}
+                  onChange={e => handleCambiarPais(e.target.value)}
+                >
+                  {PAISES_ZONAS_HORARIAS.map(p => (
+                    <option key={p.id} value={p.nombre}>
+                      {p.flag} {p.nombre} ({p.utc})
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center justify-between text-[11px] text-dark-400 bg-dark-950/80 px-2.5 py-1.5 rounded-lg border border-dark-700/80">
+                  <span>🕒 Hora detectada:</span>
+                  <span className="font-mono text-emerald-400 font-semibold">
+                    {obtenerHoraActualEnZona(form.zona_horaria)}
+                  </span>
                 </div>
               </div>
 

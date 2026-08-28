@@ -28,6 +28,8 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), _=Depends(get_cu
         "modo_redondeo": getattr(config, "modo_redondeo", "CENTENA_100") or "CENTENA_100",
         "formato_impresion": getattr(config, "formato_impresion", "80MM") or "80MM",
         "resolucion_dian": getattr(config, "resolucion_dian", "") or "",
+        "pais": getattr(config, "pais", "Colombia") or "Colombia",
+        "zona_horaria": getattr(config, "zona_horaria", "America/Bogota") or "America/Bogota",
     }
 
 @router.patch("/empresa")
@@ -47,7 +49,7 @@ async def actualizar_configuracion(
         "moneda_decimales", "factura_prefijo", "iva_porcentaje", "iva_incluido",
         "domicilio_corta", "domicilio_media", "domicilio_larga", "rubro",
         "margen_ganancia_predeterminado", "modo_redondeo",
-        "formato_impresion", "resolucion_dian",
+        "formato_impresion", "resolucion_dian", "pais", "zona_horaria",
     ]
     for campo, valor in datos.items():
         if campo in campos_permitidos:

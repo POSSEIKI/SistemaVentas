@@ -52,6 +52,8 @@ async def init_db() -> None:
                 # Migraciones seguras para columnas añadidas a tablas existentes
                 from sqlalchemy import text
                 await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL;"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS pais VARCHAR(100) DEFAULT 'Colombia';"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS zona_horaria VARCHAR(100) DEFAULT 'America/Bogota';"))
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:

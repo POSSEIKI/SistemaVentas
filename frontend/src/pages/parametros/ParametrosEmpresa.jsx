@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { configApi, productosApi } from '../../api/services'
-import { Settings, Save, Building2, Percent, DollarSign, FileText, Truck, RefreshCw, Sparkles } from 'lucide-react'
+import { Settings, Save, Building2, Percent, DollarSign, FileText, Truck, RefreshCw, Sparkles, Globe } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { PAISES_ZONAS_HORARIAS, ZONAS_HORARIAS_POPULARES, obtenerZonaPorPais, obtenerHoraActualEnZona } from '../../utils/fechas'
 
 const RUBROS = [
   { id: 'FARMACIA',      nombre: 'Droguería / Farmacia',    desc: 'Habilita fraccionamiento (Cajas/Blisters) y búsqueda por principio activo.', icon: '💊' },
@@ -78,7 +79,7 @@ export default function ParametrosEmpresa() {
             Parámetros Generales y Datos de la Empresa
           </h2>
           <p className="text-dark-400 text-xs mt-0.5">
-            Configuración fiscal, tipo de negocio, márgenes globales y tarifas de domicilio
+            Configuración fiscal, país de origen, zona horaria, márgenes globales y tarifas de domicilio
           </p>
         </div>
 
@@ -90,6 +91,79 @@ export default function ParametrosEmpresa() {
           {guardando ? <RefreshCw size={15} className="animate-spin" /> : <Save size={16} />}
           <span>{guardando ? 'Guardando...' : 'Guardar Cambios'}</span>
         </button>
+      </div>
+
+      {/* ── Selector de País de Origen y Zona Horaria ────────────── */}
+      <div className="card space-y-4">
+        <div>
+          <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+            <Globe size={16} className="text-primary-400" />
+            🌍 País de Origen y Zona Horaria Oficial
+          </h3>
+          <p className="text-dark-400 text-xs">
+            Ajusta automáticamente la fecha y hora de emisión en facturas, tickets, reportes y ventas según tu país.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-dark-400 mb-1 font-semibold">
+              País del Negocio (Configura automáticamente la hora recomendada)
+            </label>
+            <select
+              className="input-field py-2 text-xs font-semibold bg-dark-800"
+              value={form.pais || 'Colombia'}
+              onChange={e => {
+                const nuevoPais = e.target.value
+                const zonaAuto = obtenerZonaPorPais(nuevoPais)
+                const paisObj = PAISES_ZONAS_HORARIAS.find(p => p.nombre === nuevoPais)
+                setForm(f => ({
+                  ...f,
+                  pais: nuevoPais,
+                  zona_horaria: zonaAuto,
+                  moneda_simbolo: paisObj?.simbolo || f.moneda_simbolo || '$',
+                }))
+              }}
+            >
+              {PAISES_ZONAS_HORARIAS.map(p => (
+                <option key={p.id} value={p.nombre}>
+                  {p.flag} {p.nombre} ({p.utc})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-dark-400 mb-1 font-semibold">
+              Zona Horaria IANA (Cálculo de fechas exactas)
+            </label>
+            <select
+              className="input-field py-2 text-xs font-mono bg-dark-800"
+              value={form.zona_horaria || 'America/Bogota'}
+              onChange={e => set('zona_horaria', e.target.value)}
+            >
+              {ZONAS_HORARIAS_POPULARES.map(z => (
+                <option key={z.id} value={z.id}>
+                  {z.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-dark-900/70 p-3 rounded-xl border border-primary-600/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div>
+            <span className="text-white font-semibold flex items-center gap-1.5">
+              <span>🕒</span> Vista Previa en Tiempo Real de la Fecha y Hora:
+            </span>
+            <p className="text-dark-400 text-[11px] mt-0.5">
+              Esta es la hora exacta que se imprimirá en facturas, tickets POS y reportes contables.
+            </p>
+          </div>
+          <span className="font-mono text-emerald-400 font-bold bg-dark-950 px-3 py-1.5 rounded-lg border border-emerald-800/40 whitespace-nowrap">
+            {obtenerHoraActualEnZona(form.zona_horaria)}
+          </span>
+        </div>
       </div>
 
       {/* ── Selector de Rubro / Tipo de Negocio ─────────────────── */}

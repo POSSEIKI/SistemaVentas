@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { facturasApi } from '../api/services'
+import { facturasApi, configApi } from '../api/services'
 import ModalTicketFactura from '../components/ticket/ModalTicketFactura'
 import { BarChart2, TrendingUp, FileText, DollarSign, RotateCcw, Ticket, Banknote, X, CheckCircle2, AlertTriangle, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { formatearFechaHora } from '../utils/fechas'
 
 function formatCOP(n) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0)
@@ -13,6 +14,7 @@ export default function ReportesPage() {
   const [facturas, setFacturas] = useState([])
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0])
   const [cargando, setCargando] = useState(true)
+  const [zonaHoraria, setZonaHoraria] = useState('America/Bogota')
 
   // Modal Devolución / Bono
   const [modalDevolucion, setModalDevolucion] = useState(null) // factura seleccionada
@@ -34,6 +36,12 @@ export default function ReportesPage() {
       setFacturas(facts)
     } finally { setCargando(false) }
   }
+
+  useEffect(() => {
+    configApi.get().then(cfg => {
+      if (cfg?.zona_horaria) setZonaHoraria(cfg.zona_horaria)
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => { cargar(fecha) }, [fecha])
 
@@ -120,7 +128,7 @@ export default function ReportesPage() {
                 <tr key={f.id} className="hover:bg-dark-700/40 transition-colors">
                   <td className="px-4 py-3 text-white font-mono font-bold">{f.numero}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono text-xs">
-                    {f.fecha ? new Date(f.fecha).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    {f.fecha ? formatearFechaHora(f.fecha, zonaHoraria, { hour: '2-digit', minute: '2-digit', year: undefined, month: undefined, day: undefined, second: undefined }) : '—'}
                   </td>
                   <td className="px-4 py-3 text-dark-300 font-medium truncate max-w-xs">
                     {f.cliente_nombre || 'Cliente Mostrador'}

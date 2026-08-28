@@ -14,6 +14,7 @@ import {
   calcularMargenDesdePrecio,
   formatCOP,
 } from '../utils/pricing'
+import { formatearFechaHora } from '../utils/fechas'
 
 const LIMITE_BUSQUEDA = 6
 
@@ -28,6 +29,7 @@ export default function ComprasPage() {
   const [pagBusqueda, setPagBusqueda] = useState(1)
   const [lineas, setLineas] = useState([])
   const [guardando, setGuardando] = useState(false)
+  const [zonaHoraria, setZonaHoraria] = useState('America/Bogota')
   const [analizandoExcel, setAnalizandoExcel] = useState(false)
   const [resumenCargue, setResumenCargue] = useState(null)
   const [rubro, setRubro] = useState('FARMACIA')
@@ -114,6 +116,7 @@ export default function ComprasPage() {
         if (cfg.rubro) setRubro(cfg.rubro)
         if (cfg.margen_ganancia_predeterminado) setMargenPredeterminado(parseFloat(cfg.margen_ganancia_predeterminado) || 30.0)
         if (cfg.modo_redondeo) setModoRedondeo(cfg.modo_redondeo)
+        if (cfg.zona_horaria) setZonaHoraria(cfg.zona_horaria)
       }
     }).catch(() => {})
     cargarHistorial()
@@ -1673,7 +1676,7 @@ export default function ComprasPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-dark-300 whitespace-nowrap text-[11px]">
-                          {comp.fecha ? new Date(comp.fecha).toLocaleString() : '-'}
+                          {comp.fecha ? formatearFechaHora(comp.fecha, zonaHoraria) : '-'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <p className="text-white font-semibold text-xs">{comp.proveedor_nombre}</p>
@@ -2593,7 +2596,7 @@ export default function ComprasPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-dark-400 font-sans">Fecha de Ingreso:</span>
-                  <span className="text-white font-medium">{new Date(facturaDuplicadaModal.compraPrevia.fecha).toLocaleString()}</span>
+                  <span className="text-white font-medium">{formatearFechaHora(facturaDuplicadaModal.compraPrevia.fecha, zonaHoraria)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-dark-400 font-sans">Total de la Factura:</span>

@@ -31,6 +31,8 @@ class SetupRequest(BaseModel):
     empresa_ciudad: Optional[str] = ""
     empresa_direccion: Optional[str] = ""
     rubro: Optional[str] = "FARMACIA"
+    pais: Optional[str] = "Colombia"
+    zona_horaria: Optional[str] = "America/Bogota"
 
     @field_validator("admin_codigo")
     @classmethod

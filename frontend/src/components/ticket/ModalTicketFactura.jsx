@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatCOP } from '../../utils/pricing'
+import { formatearFechaHora } from '../../utils/fechas'
 import { clientesApi } from '../../api/services'
 import {
   copiarTicketComoImagen,
@@ -48,7 +49,7 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
     if (empresa?.direccion) t += `Dir: ${empresa.direccion} - ${empresa.ciudad || ''}\n`
     if (empresa?.telefono) t += `Tel: ${empresa.telefono}\n`
     t += `----------------------------------------\n`
-    t += `📅 *Fecha:* ${factura.fecha_formateada || new Date(factura.fecha).toLocaleString('es-CO')}\n`
+    t += `📅 *Fecha:* ${factura.fecha_formateada || formatearFechaHora(factura.fecha, empresa?.zona_horaria || 'America/Bogota')}\n`
     t += `👤 *Cliente:* ${cliente?.nombre || 'Consumidor Final'} (${cliente?.nit || ''})\n`
     if (cajero?.nombre) t += `👨‍💼 *Atendido por:* ${cajero.nombre}\n`
     t += `----------------------------------------\n`
@@ -338,7 +339,7 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                       <span className="text-[10px] text-gray-500 uppercase font-bold block">Factura de Venta</span>
                       <span className="text-lg font-black text-primary-700 font-mono block">{factura.numero}</span>
                       <span className="text-[11px] text-gray-600 font-mono block">
-                        {factura.fecha_formateada || new Date(factura.fecha).toLocaleString('es-CO')}
+                        {factura.fecha_formateada || formatearFechaHora(factura.fecha, empresa?.zona_horaria || 'America/Bogota')}
                       </span>
                     </div>
                   </div>
@@ -463,7 +464,7 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                   </div>
                   <div className="flex justify-between">
                     <span>FECHA:</span>
-                    <span>{factura.fecha_formateada || new Date(factura.fecha).toLocaleString('es-CO')}</span>
+                    <span>{factura.fecha_formateada || formatearFechaHora(factura.fecha, empresa?.zona_horaria || 'America/Bogota')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>CLIENTE:</span>

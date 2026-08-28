@@ -26,5 +26,7 @@ class ConfiguracionEmpresa(Base):
     modo_redondeo = Column(String(30), default="CENTENA_100")
     formato_impresion = Column(String(20), default="80MM")
     resolucion_dian = Column(String(300), default="")
+    pais = Column(String(100), default="Colombia")
+    zona_horaria = Column(String(100), default="America/Bogota")
     primer_inicio = Column(Boolean, default=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
