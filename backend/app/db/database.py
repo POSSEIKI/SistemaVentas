@@ -45,7 +45,7 @@ async def init_db() -> None:
         try:
             async with engine.begin() as conn:
                 from app.models import (  # noqa
-                    usuario, producto, cliente, factura, inventario, configuracion, suscripcion,
+                    usuario, producto, cliente, factura, inventario, configuracion, suscripcion, resolucion_dian,
                 )
                 await conn.run_sync(Base.metadata.create_all)
 
@@ -73,6 +73,7 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_pdf_url TEXT;"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_errores TEXT;"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_numero_oficial VARCHAR(50);"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS resolucion_id INTEGER REFERENCES resoluciones_dian(id) ON DELETE SET NULL;"))
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:

@@ -14,6 +14,7 @@ from app.models.cliente import Cliente
 from app.models.bono import BonoCliente
 from app.models.inventario import Compra, CompraDetalle, MovimientoInventario
 from app.models.configuracion import ConfiguracionEmpresa
+from app.models.resolucion_dian import ResolucionDian
 from app.models.usuario import Usuario, Rol
 from app.core.security import verify_password
 from app.schemas.ventas import FacturaCreate, CompraCreate, DevolucionFacturaRequest
@@ -26,12 +27,33 @@ async def _siguiente_numero(db: AsyncSession, prefijo: str, modelo, campo) -> st
     return f"{prefijo}{str(total + 1).zfill(6)}"
 
 async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession) -> Factura:
-    # Obtener config para prefijo
-    result = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
-    config = result.scalar_one_or_none()
-    prefijo = config.factura_prefijo if config else "FV"
+    # 1. Buscar si existe una Resolución DIAN activa
+    res_resolucion = await db.execute(
+        select(ResolucionDian)
+        .where(ResolucionDian.activa == True)
+        .order_by(ResolucionDian.id.desc())
+    )
+    resolucion = res_resolucion.scalars().first()
 
-    numero = await _siguiente_numero(db, prefijo, Factura, "numero")
+    resolucion_id = None
+    if resolucion:
+        resolucion_id = resolucion.id
+        prefijo = (resolucion.prefijo or "POS").strip().upper()
+        # Siguiente consecutivo de la resolución
+        consecutivo = max(resolucion.consecutivo_actual + 1, resolucion.rango_desde)
+        if consecutivo > resolucion.rango_hasta:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Se ha alcanzado el límite máximo del rango autorizado por la DIAN ({resolucion.rango_hasta:,}). Debe renovar su resolución de numeración."
+            )
+        resolucion.consecutivo_actual = consecutivo
+        numero = f"{prefijo}{str(consecutivo).zfill(6)}"
+    else:
+        # Fallback a configuración general
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        config = res_cfg.scalar_one_or_none()
+        prefijo = config.factura_prefijo if config else "FV"
+        numero = await _siguiente_numero(db, prefijo, Factura, "numero")
 
     subtotal = Decimal("0")
     descuento_total = Decimal("0")
@@ -135,6 +157,7 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
         valor_recibido=datos.valor_recibido,
         cambio=cambio,
         observaciones=datos.observaciones,
+        resolucion_id=resolucion_id,
         lineas=lineas_db,
     )
     db.add(factura)

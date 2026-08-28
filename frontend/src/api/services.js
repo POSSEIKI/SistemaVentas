@@ -85,6 +85,15 @@ export const configApi = {
   rangosFactus: (datos) => api.post('/configuracion/factus/rangos-numeracion', datos).then(r => r.data),
 }
 
+export const resolucionesApi = {
+  listar: (params) => api.get('/resoluciones', { params }).then(r => r.data),
+  activa: (tipo) => api.get('/resoluciones/activa', { params: tipo ? { tipo } : {} }).then(r => r.data),
+  crear: (datos) => api.post('/resoluciones', datos).then(r => r.data),
+  actualizar: (id, datos) => api.patch(`/resoluciones/${id}`, datos).then(r => r.data),
+  activar: (id) => api.post(`/resoluciones/${id}/activar`).then(r => r.data),
+  eliminar: (id) => api.delete(`/resoluciones/${id}`).then(r => r.data),
+}
+
 export const suscripcionesApi = {
   planesPublicos: () => api.get('/suscripciones/planes/publicos').then(r => r.data),
   registroEmpresa: (datos) => api.post('/suscripciones/registro-empresa', datos).then(r => r.data),

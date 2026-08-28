@@ -31,6 +31,7 @@ class Factura(Base):
     dian_pdf_url = Column(Text, nullable=True)
     dian_errores = Column(Text, nullable=True)
     dian_numero_oficial = Column(String(50), nullable=True)
+    resolucion_id = Column(Integer, ForeignKey("resoluciones_dian.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     cliente = relationship("Cliente", back_populates="facturas")
     usuario = relationship("Usuario", back_populates="facturas", foreign_keys=[usuario_id])
