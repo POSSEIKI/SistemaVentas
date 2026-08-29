@@ -52,7 +52,7 @@ export default function SignUpPage() {
   const handleNextStep1 = (e) => {
     e.preventDefault()
     if (!formData.empresa_nombre.trim()) {
-      setError('Por favor ingresa el nombre de tu droguería o negocio')
+      setError('Por favor ingresa el nombre de tu negocio o empresa')
       return
     }
     setError('')
@@ -436,14 +436,14 @@ export default function SignUpPage() {
                 </span>
               </div>
               <h3 className="text-lg font-bold text-white">
-                {formData.plan_codigo === 'BASICO' ? 'Plan Emprendedor' : formData.plan_codigo === 'ENTERPRISE' ? 'Plan Cadenas & Multi-Sede' : 'Plan Pro Farmacias & Ferreterías'}
+                {formData.plan_codigo === 'BASICO' ? 'Plan Emprendedor' : formData.plan_codigo === 'ENTERPRISE' ? 'Plan Empresarial & Multi-Sede' : 'Plan Pro Negocios'}
               </h3>
               <p className="text-xs text-slate-300 mt-1">
                 {formData.plan_codigo === 'BASICO'
-                  ? 'Punto de venta esencial, control de inventario y tirilla.'
+                  ? 'Punto de venta esencial, control de inventario, tickets y cuadre de caja.'
                   : formData.plan_codigo === 'ENTERPRISE'
-                  ? 'Multi-sucursal, auditoría avanzada y backups dedicados.'
-                  : 'Productos ilimitados, venta por fracciones (caja/blíster/unidad), importador PDF/DAT de facturas y lotes.'}
+                  ? 'Multi-sucursales, reportes gerenciales, auditoría avanzada y backups dedicados.'
+                  : 'Productos y ventas ilimitadas, facturas electrónicas DIAN, importador de facturas y control total de inventario.'}
               </p>
 
               <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">

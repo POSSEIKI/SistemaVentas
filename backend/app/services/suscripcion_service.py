@@ -18,7 +18,7 @@ PLANES_INICIALES = [
     {
         "codigo": "BASICO",
         "nombre": "Plan Emprendedor",
-        "descripcion": "Ideal para pequeños comercios y negocios que inician su punto de venta.",
+        "descripcion": "Ideal para pequeños negocios y comercios que inician su punto de venta.",
         "precio_mensual": Decimal("35000"),
         "precio_anual": Decimal("350000"), # 2 meses gratis
         "limite_productos": 1000,
@@ -40,8 +40,8 @@ PLANES_INICIALES = [
     },
     {
         "codigo": "PRO",
-        "nombre": "Plan Pro Farmacias & Ferreterías",
-        "descripcion": "La solución completa para droguerías, farmacias y comercios con venta por fracciones.",
+        "nombre": "Plan Pro Negocios",
+        "descripcion": "Control total de inventario, productos ilimitados, importación de facturas, lotes y ventas para todo tipo de negocio.",
         "precio_mensual": Decimal("65000"),
         "precio_anual": Decimal("650000"),
         "limite_productos": 0, # Ilimitado
@@ -51,14 +51,13 @@ PLANES_INICIALES = [
         "permite_importador_pdf": True,
         "permite_fracciones": True,
         "caracteristicas": json.dumps([
-            "Todo lo del Plan Básico",
+            "Todo lo del Plan Emprendedor",
             "Productos y Ventas Ilimitadas",
-            "Venta Fraccionada (Caja / Blíster / Unidad)",
-            "Búsqueda Inteligente por Sustancia Genérica",
-            "Importador Automático de Facturas PDF (LOINPRO/DIAN)",
-            "Importador Oficial Coopidrogas .DAT y Excel",
+            "Venta por Unidades, Cajas o Fracciones",
+            "Importador Automático de Facturas PDF y Excel",
             "Control de Lotes y Fechas de Vencimiento",
             "Envío de Tirilla POS por WhatsApp y Correo",
+            "Facturación Electrónica DIAN y POS Electrónico",
             "Hasta 5 Usuarios Simultáneos",
             "Soporte Técnico Prioritario"
         ]),
@@ -67,7 +66,7 @@ PLANES_INICIALES = [
     },
     {
         "codigo": "ENTERPRISE",
-        "nombre": "Plan Cadenas & Multi-Sede",
+        "nombre": "Plan Empresarial & Multi-Sede",
         "descripcion": "Para empresas con múltiples sucursales, alta rotación y necesidades corporativas.",
         "precio_mensual": Decimal("120000"),
         "precio_anual": Decimal("1200000"),
@@ -78,7 +77,7 @@ PLANES_INICIALES = [
         "permite_importador_pdf": True,
         "permite_fracciones": True,
         "caracteristicas": json.dumps([
-            "Todo lo del Plan Pro",
+            "Todo lo del Plan Pro Negocios",
             "Multi-Sucursal y Transferencias entre Sedes",
             "Usuarios y Cajas Ilimitadas",
             "Reportes Gerenciales y Auditoría Avanzada",
@@ -92,13 +91,20 @@ PLANES_INICIALES = [
 ]
 
 async def inicializar_planes_predeterminados(db: AsyncSession):
-    """Crea los planes por defecto en la base de datos si no existen."""
+    """Crea o actualiza los planes por defecto en la base de datos."""
     for p_def in PLANES_INICIALES:
         res = await db.execute(select(PlanSuscripcion).where(PlanSuscripcion.codigo == p_def["codigo"]))
         existente = res.scalar_one_or_none()
         if not existente:
             plan = PlanSuscripcion(**p_def)
             db.add(plan)
+        else:
+            # Actualizar nombres y descripciones para que no queden desactualizados en la BD
+            existente.nombre = p_def["nombre"]
+            existente.descripcion = p_def["descripcion"]
+            existente.caracteristicas = p_def["caracteristicas"]
+            existente.destacado = p_def["destacado"]
+            existente.orden = p_def["orden"]
     await db.commit()
 
 async def obtener_planes_publicos(db: AsyncSession) -> List[PlanSuscripcion]:

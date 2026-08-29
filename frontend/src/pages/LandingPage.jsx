@@ -29,16 +29,16 @@ const DEFAULT_PLANES = [
   {
     id: 2,
     codigo: 'PRO',
-    nombre: 'Plan Pro Farmacias & Ferreterías',
-    descripcion: 'Diseñado para droguerías, farmacias y ferreterías de alta rotación.',
+    nombre: 'Plan Pro Negocios',
+    descripcion: 'Control total de inventario, productos ilimitados, facturación DIAN e importación de facturas para todo tipo de negocio.',
     precio_mensual: 65000,
     precio_anual: 650000,
     destacado: true,
     caracteristicas: JSON.stringify([
       'Productos y ventas ilimitadas',
-      'Venta fraccionada: Caja / Blíster / Unidad',
-      'Búsqueda por Principio Activo / Genérico',
-      'Importador automático PDF (LOINPRO, DIAN) y DAT',
+      'Venta por unidades, cajas o fracciones',
+      'Facturación Electrónica DIAN y POS',
+      'Importador automático PDF y Excel',
       'Control de lotes y fechas de vencimiento',
       'Tirilla WhatsApp y Correo para clientes'
     ])
@@ -46,16 +46,16 @@ const DEFAULT_PLANES = [
   {
     id: 3,
     codigo: 'ENTERPRISE',
-    nombre: 'Plan Cadenas & Multi-Sede',
-    descripcion: 'Para droguerías con múltiples sucursales y franquicias.',
+    nombre: 'Plan Empresarial & Multi-Sede',
+    descripcion: 'Para empresas con múltiples sucursales, alta rotación y necesidades corporativas.',
     precio_mensual: 120000,
     precio_anual: 1200000,
     destacado: false,
     caracteristicas: JSON.stringify([
-      'Todo lo del Plan Pro incluido',
+      'Todo lo del Plan Pro Negocios',
       'Soporte Multi-Sucursal y bodegas centrales',
       'Usuarios y cajeros ilimitados',
-      'Auditoría y reportes consolidados',
+      'Auditoría y reportes gerenciales',
       'Soporte prioritario 24/7 y backups dedicados'
     ])
   }
