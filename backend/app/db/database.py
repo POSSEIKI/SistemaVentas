@@ -103,13 +103,22 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_tipo_documento VARCHAR(50) DEFAULT 'POS_ELECTRONICO';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_municipio_id VARCHAR(20) DEFAULT '980';"))
 
-                # Secuencias autoincrementales automáticas
-                try:
-                    await conn.execute(text("CREATE SEQUENCE IF NOT EXISTS configuracion_empresa_id_seq;"))
-                    await conn.execute(text("SELECT setval('configuracion_empresa_id_seq', COALESCE((SELECT MAX(id) FROM configuracion_empresa), 0) + 1, false);"))
-                    await conn.execute(text("ALTER TABLE configuracion_empresa ALTER COLUMN id SET DEFAULT nextval('configuracion_empresa_id_seq');"))
-                except Exception as seq_err:
-                    logger.warning(f"Aviso en secuencia configuracion_empresa: {seq_err}")
+                # Secuencias autoincrementales automáticas para todas las tablas
+                tablas_secuencias = [
+                    "empresas", "configuracion_empresa", "usuarios", "roles",
+                    "planes_suscripcion", "suscripciones", "clientes", "productos",
+                    "categorias", "unidades_medida", "facturas", "factura_detalles",
+                    "movimientos_inventario", "resoluciones_dian", "proveedores",
+                    "compras", "compra_detalles", "cajas", "caja_movimientos"
+                ]
+                for tbl in tablas_secuencias:
+                    try:
+                        seq_name = f"{tbl}_id_seq"
+                        await conn.execute(text(f"CREATE SEQUENCE IF NOT EXISTS {seq_name};"))
+                        await conn.execute(text(f"SELECT setval('{seq_name}', COALESCE((SELECT MAX(id) FROM {tbl}), 0) + 1, false);"))
+                        await conn.execute(text(f"ALTER TABLE {tbl} ALTER COLUMN id SET DEFAULT nextval('{seq_name}');"))
+                    except Exception as err_s:
+                        logger.warning(f"Aviso en secuencia para {tbl}: {err_s}")
                 # Columnas en facturas para CUFE y QR
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS cufe VARCHAR(255);"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS qr_cadena TEXT;"))

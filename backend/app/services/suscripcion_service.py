@@ -134,15 +134,12 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
     username_clean = datos.admin_username.strip().lower()
     email_clean = datos.admin_email.strip().lower() if datos.admin_email else None
 
-    res_usr = await db.execute(
-        select(Usuario).where(
-            or_(
-                Usuario.username == username_clean,
-                Usuario.email == email_clean if email_clean else False
-            )
-        )
-    )
-    if res_usr.scalar_one_or_none():
+    conditions = [Usuario.username == username_clean]
+    if email_clean:
+        conditions.append(Usuario.email == email_clean)
+
+    res_usr = await db.execute(select(Usuario).where(or_(*conditions)))
+    if res_usr.scalars().first():
         raise HTTPException(
             status_code=400,
             detail="El nombre de usuario o correo electrónico ya está registrado. Por favor inicia sesión o usa otro correo."
@@ -153,10 +150,10 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
 
     # 3. Buscar plan seleccionado (o PRO por defecto)
     res_plan = await db.execute(select(PlanSuscripcion).where(PlanSuscripcion.codigo == datos.plan_codigo.upper()))
-    plan = res_plan.scalar_one_or_none()
+    plan = res_plan.scalars().first()
     if not plan:
         res_plan = await db.execute(select(PlanSuscripcion).where(PlanSuscripcion.codigo == "PRO"))
-        plan = res_plan.scalar_one_or_none()
+        plan = res_plan.scalars().first()
 
     # 4. Crear Empresa
     slug = _crear_slug(datos.empresa_nombre)
@@ -175,7 +172,7 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
 
     # 5. Asegurar Rol Administrador
     res_rol = await db.execute(select(Rol).where(Rol.nombre == "ADMINISTRADOR"))
-    rol_admin = res_rol.scalar_one_or_none()
+    rol_admin = res_rol.scalars().first()
     if not rol_admin:
         permisos_admin = json.dumps({"administrador_total": True})
         rol_admin = Rol(nombre="ADMINISTRADOR", descripcion="Acceso total al sistema", permisos=permisos_admin)
@@ -259,7 +256,7 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
     cats_rubro = CATEGORIAS_RUBRO_MAP.get(rubro_sel, CATEGORIAS_RUBRO_MAP["COMERCIO_GENERAL"])
     for nom_c in cats_rubro:
         rc = await db.execute(select(Categoria).where(Categoria.nombre.ilike(nom_c)))
-        if not rc.scalar_one_or_none():
+        if not rc.scalars().first():
             db.add(Categoria(nombre=nom_c, activo=True))
 
     await db.commit()
