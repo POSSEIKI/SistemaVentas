@@ -478,6 +478,8 @@ async def crear_producto(
             p_data["precio_venta"] = p_data["precio_caja"]
 
     p_data["empresa_id"] = empresa_id
+    res_max_p = await db.execute(select(func.coalesce(func.max(Producto.id), 0)))
+    p_data["id"] = (res_max_p.scalar() or 0) + 1
     producto = Producto(**p_data)
     db.add(producto)
     await db.commit()
