@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
-import { productosApi } from '../api/services'
+import { productosApi, configApi } from '../api/services'
 import {
   Search, Plus, Package, Upload, Download, Edit2,
   Trash2, X, CheckCircle, AlertCircle, AlertTriangle, HelpCircle,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  FileSpreadsheet, Scale, FileCheck, ArrowUpRight, ArrowDownRight
+  FileSpreadsheet, Scale, FileCheck, ArrowUpRight, ArrowDownRight,
+  Calculator, Sparkles, Percent
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-function formatCOP(n) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0)
-}
+import {
+  redondearPrecio,
+  calcularPrecioDesdeCosto,
+  calcularMargenDesdePrecio,
+  formatCOP,
+} from '../utils/pricing'
 
 const FORM_PRODUCTO_VACIO = {
   codigo: '',
@@ -64,6 +67,11 @@ export default function InventarioPage() {
   const [formProducto, setFormProducto] = useState(FORM_PRODUCTO_VACIO)
   const [guardando, setGuardando] = useState(false)
 
+  // Parametrización Comercial & Margen
+  const [margenDefecto, setMargenDefecto] = useState(30.0)
+  const [modoRedondeo, setModoRedondeo] = useState('CENTENA_100')
+  const [porcentajeMargen, setPorcentajeMargen] = useState(30.0)
+
   // Modal nueva categoría rápida
   const [modalNuevaCat, setModalNuevaCat] = useState(false)
   const [nombreNuevaCat, setNombreNuevaCat] = useState('')
@@ -92,10 +100,11 @@ export default function InventarioPage() {
       if (cat) params.categoria_id = parseInt(cat)
       if (busq && busq.trim()) params.q = busq.trim()
 
-      const [resProds, cats, unis] = await Promise.all([
+      const [resProds, cats, unis, cfg] = await Promise.all([
         productosApi.listar(params),
         productosApi.categorias(),
         productosApi.unidades(),
+        configApi.get().catch(() => null),
       ])
 
       if (resProds && resProds.items) {
@@ -111,6 +120,14 @@ export default function InventarioPage() {
 
       setCategorias(cats)
       setUnidades(unis)
+
+      if (cfg) {
+        if (cfg.margen_ganancia_predeterminado !== undefined && cfg.margen_ganancia_predeterminado !== null) {
+          const m = parseFloat(cfg.margen_ganancia_predeterminado) || 30.0
+          setMargenDefecto(m)
+        }
+        if (cfg.modo_redondeo) setModoRedondeo(cfg.modo_redondeo)
+      }
     } catch {
       toast.error('Error cargando inventario')
     } finally {
@@ -178,10 +195,11 @@ export default function InventarioPage() {
 
   const handleDescargarTomaFisica = () => {
     toast.success('Generando hoja de conteo físico Excel...')
-    const params = {}
-    if (catFiltro) params.categoria_id = catFiltro
-    if (busqueda) params.q = busqueda
-    window.open(productosApi.exportarInventarioFisicoUrl(params), '_blank')
+    try {
+      window.open(productosApi.urlDescargarPlantillaAjusteFisico(), '_blank')
+    } catch {
+      toast.error('No se pudo generar el archivo de toma física')
+    }
   }
 
   const handleSubirAjusteFisico = async () => {
@@ -194,9 +212,9 @@ export default function InventarioPage() {
     try {
       const formData = new FormData()
       formData.append('archivo', archivoAjuste)
-      const res = await productosApi.ajustarInventarioFisico(formData)
+      const res = await productosApi.importarAjusteFisico(formData)
       setResumenAjuste(res)
-      toast.success(`Inventario actualizado: ${res.total_ajustados} productos ajustados`)
+      toast.success(res.mensaje || 'Ajuste de inventario procesado con éxito')
       cargarDatos(busqueda, catFiltro, pagina, limite)
     } catch (err) {
       toast.error(err.message || 'Error procesando ajuste de inventario')
@@ -205,14 +223,117 @@ export default function InventarioPage() {
     }
   }
 
+  const calcularPreciosDerivados = (costoVal, margenVal, fraccionesActivas = formProducto.maneja_fracciones, contCaja = formProducto.contenido_caja, contBlister = formProducto.contenido_blister) => {
+    const c = parseFloat(costoVal) || 0
+    const m = parseFloat(margenVal) !== undefined && !isNaN(parseFloat(margenVal)) ? parseFloat(margenVal) : porcentajeMargen
+    if (c <= 0) return { precio_venta: 0, precio_caja: 0, precio_blister: 0, precio_unidad: 0 }
+
+    const pVenta = calcularPrecioDesdeCosto(c, m, modoRedondeo)
+    let pCaja = pVenta
+    let pBlister = 0
+    let pUnidad = 0
+
+    if (fraccionesActivas) {
+      const numCaja = parseInt(contCaja) || 1
+      const numBlister = parseInt(contBlister) || 0
+      pCaja = pVenta
+
+      if (numCaja > 1) {
+        pUnidad = calcularPrecioDesdeCosto(c / numCaja, m, modoRedondeo)
+      }
+      if (numBlister > 1 && numCaja > 1) {
+        pBlister = calcularPrecioDesdeCosto(c / (numCaja / numBlister), m, modoRedondeo)
+      }
+    }
+
+    return {
+      precio_venta: pVenta,
+      precio_caja: pCaja,
+      precio_blister: pBlister,
+      precio_unidad: pUnidad,
+    }
+  }
+
+  const handleCostoChange = (val) => {
+    const c = parseFloat(val) || 0
+    if (c > 0) {
+      const { precio_venta, precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(c, porcentajeMargen)
+      setFormProducto(prev => ({
+        ...prev,
+        precio_costo: val,
+        precio_venta,
+        precio_caja: prev.maneja_fracciones ? precio_caja : prev.precio_caja,
+        precio_blister: prev.maneja_fracciones ? precio_blister : prev.precio_blister,
+        precio_unidad: prev.maneja_fracciones ? precio_unidad : prev.precio_unidad,
+      }))
+    } else {
+      setFormProducto(prev => ({ ...prev, precio_costo: val }))
+    }
+  }
+
+  const handleMargenChange = (val) => {
+    setPorcentajeMargen(val)
+    const m = parseFloat(val) || 0
+    const c = parseFloat(formProducto.precio_costo) || 0
+    if (c > 0) {
+      const { precio_venta, precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(c, m)
+      setFormProducto(prev => ({
+        ...prev,
+        precio_venta,
+        precio_caja: prev.maneja_fracciones ? precio_caja : prev.precio_caja,
+        precio_blister: prev.maneja_fracciones ? precio_blister : prev.precio_blister,
+        precio_unidad: prev.maneja_fracciones ? precio_unidad : prev.precio_unidad,
+      }))
+    }
+  }
+
+  const handlePrecioVentaChange = (val) => {
+    const p = parseFloat(val) || 0
+    const c = parseFloat(formProducto.precio_costo) || 0
+    if (c > 0 && p > 0) {
+      const m = calcularMargenDesdePrecio(c, p)
+      setPorcentajeMargen(m)
+    }
+    setFormProducto(prev => ({
+      ...prev,
+      precio_venta: val,
+      precio_caja: prev.maneja_fracciones ? (parseFloat(val) || prev.precio_caja) : prev.precio_caja,
+    }))
+  }
+
+  const handleBotonCalcular = () => {
+    const c = parseFloat(formProducto.precio_costo) || 0
+    if (c <= 0) {
+      toast.error('Por favor ingresa primero el Precio de Costo ($) para calcular')
+      return
+    }
+    const { precio_venta, precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(c, porcentajeMargen, formProducto.maneja_fracciones)
+    setFormProducto(prev => ({
+      ...prev,
+      precio_venta,
+      precio_caja: prev.maneja_fracciones ? precio_caja : prev.precio_caja,
+      precio_blister: prev.maneja_fracciones ? precio_blister : prev.precio_blister,
+      precio_unidad: prev.maneja_fracciones ? precio_unidad : prev.precio_unidad,
+    }))
+    toast.success(`✓ Precio de venta calculado: ${formatCOP(precio_venta)} (+${porcentajeMargen}% margen y redondeo ${modoRedondeo})`)
+  }
+
   const abrirCrear = () => {
     setProductoEditando(null)
-    setFormProducto(FORM_PRODUCTO_VACIO)
+    setPorcentajeMargen(margenDefecto)
+    setFormProducto({
+      ...FORM_PRODUCTO_VACIO,
+      porcentaje_ganancia: margenDefecto,
+    })
     setModalProducto(true)
   }
 
   const abrirEditar = (p) => {
     setProductoEditando(p)
+    const costo = parseFloat(p.precio_costo) || 0
+    const venta = parseFloat(p.precio_venta) || 0
+    const margenCalculado = (costo > 0 && venta > 0) ? calcularMargenDesdePrecio(costo, venta) : margenDefecto
+    setPorcentajeMargen(margenCalculado > 0 ? margenCalculado : margenDefecto)
     setFormProducto({
       codigo: p.codigo || '',
       codigo_barras: p.codigo_barras || '',
@@ -222,8 +343,8 @@ export default function InventarioPage() {
       descripcion: p.descripcion || '',
       categoria_id: p.categoria_id || '',
       unidad_medida_id: p.unidad_medida_id || 1,
-      precio_costo: parseFloat(p.precio_costo) || 0,
-      precio_venta: parseFloat(p.precio_venta) || 0,
+      precio_costo: costo,
+      precio_venta: venta,
       iva_porcentaje: parseFloat(p.iva_porcentaje) || 0,
       stock_actual: parseFloat(p.stock_actual) || 0,
       stock_minimo: parseFloat(p.stock_minimo) || 0,
@@ -882,36 +1003,73 @@ export default function InventarioPage() {
 
               {/* 2. Precios & Costos */}
               <div className="space-y-3 pt-2 border-t border-dark-700">
-                <h4 className="text-sm font-semibold text-primary-400 uppercase tracking-wide">
-                  2. Costos y Precios Base
-                </h4>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-primary-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Calculator size={15} /> 2. Costos y Precios Base
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleBotonCalcular}
+                    className="px-3 py-1 text-xs font-bold rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                    title="Calcular precio de venta automáticamente con el margen y redondeo configurados"
+                  >
+                    <Sparkles size={13} className="text-amber-400 animate-pulse" />
+                    ⚡ Calcular Automático (+{porcentajeMargen || margenDefecto}%)
+                  </button>
+                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-dark-900/50 p-3.5 rounded-xl border border-dark-700/80">
                   <div>
-                    <label className="block text-xs text-dark-500 mb-1">Precio de Costo ($)</label>
+                    <label className="block text-xs text-dark-400 font-semibold mb-1">Precio de Costo ($) *</label>
                     <input
                       type="number"
                       step="any"
-                      className="input-field"
+                      min="0"
+                      className="input-field font-mono font-bold"
+                      placeholder="0"
                       value={formProducto.precio_costo}
-                      onChange={e => setFormProducto({ ...formProducto, precio_costo: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-dark-500 mb-1">Precio de Venta Base ($) *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      className="input-field font-semibold text-primary-400"
-                      value={formProducto.precio_venta}
-                      onChange={e => setFormProducto({ ...formProducto, precio_venta: e.target.value })}
+                      onChange={e => handleCostoChange(e.target.value)}
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs text-dark-500 mb-1">IVA (%)</label>
+                    <label className="block text-xs text-dark-400 font-semibold mb-1 flex items-center justify-between">
+                      <span>% Margen</span>
+                      <span className="text-[10px] text-primary-400 font-normal">Empresa: {margenDefecto}%</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="any"
+                        className="input-field font-mono font-bold text-primary-300 pr-7"
+                        placeholder="30"
+                        value={porcentajeMargen}
+                        onChange={e => handleMargenChange(e.target.value)}
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-dark-500 font-bold text-xs pointer-events-none">%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-dark-400 font-semibold mb-1 flex items-center justify-between">
+                      <span>Precio Venta Base ($) *</span>
+                      <span className="text-[10px] text-emerald-400 font-normal">{modoRedondeo}</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      className="input-field font-mono font-bold text-emerald-400 border-emerald-500/40 focus:border-emerald-400"
+                      placeholder="0"
+                      value={formProducto.precio_venta}
+                      onChange={e => handlePrecioVentaChange(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-dark-400 font-semibold mb-1">IVA (%)</label>
                     <select
                       className="input-field"
                       value={formProducto.iva_porcentaje}
@@ -923,6 +1081,21 @@ export default function InventarioPage() {
                     </select>
                   </div>
                 </div>
+
+                {/* Resumen de rentabilidad en vivo */}
+                {(parseFloat(formProducto.precio_costo) > 0 && parseFloat(formProducto.precio_venta) > 0) && (
+                  <div className="flex flex-wrap items-center justify-between text-xs px-3 py-1.5 bg-dark-950/60 rounded-lg border border-dark-700/60 text-dark-400">
+                    <span>
+                      💵 Utilidad bruta: <strong className="text-emerald-400 font-mono">{formatCOP(parseFloat(formProducto.precio_venta) - parseFloat(formProducto.precio_costo))}</strong> por unidad
+                    </span>
+                    <span>
+                      📊 Margen aplicado: <strong className="text-primary-300 font-mono">+{porcentajeMargen}%</strong>
+                    </span>
+                    <span>
+                      📐 Regla de redondeo: <span className="text-white font-medium">{modoRedondeo}</span>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* 3. Fraccionamiento & Multi-Presentación */}
@@ -940,7 +1113,19 @@ export default function InventarioPage() {
                     type="checkbox"
                     id="chkFracciones"
                     checked={formProducto.maneja_fracciones}
-                    onChange={e => setFormProducto({ ...formProducto, maneja_fracciones: e.target.checked })}
+                    onChange={e => {
+                      const chk = e.target.checked
+                      setFormProducto(prev => {
+                        const updated = { ...prev, maneja_fracciones: chk }
+                        if (chk && parseFloat(prev.precio_costo) > 0) {
+                          const { precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(prev.precio_costo, porcentajeMargen, true, prev.contenido_caja, prev.contenido_blister)
+                          updated.precio_caja = precio_caja || prev.precio_venta
+                          updated.precio_blister = precio_blister
+                          updated.precio_unidad = precio_unidad
+                        }
+                        return updated
+                      })
+                    }}
                     className="w-5 h-5 accent-primary-600 rounded cursor-pointer"
                   />
                 </div>
@@ -957,7 +1142,19 @@ export default function InventarioPage() {
                           className="input-field"
                           placeholder="Ej: 100"
                           value={formProducto.contenido_caja}
-                          onChange={e => setFormProducto({ ...formProducto, contenido_caja: e.target.value })}
+                          onChange={e => {
+                            const val = e.target.value
+                            setFormProducto(prev => {
+                              const updated = { ...prev, contenido_caja: val }
+                              if (parseFloat(prev.precio_costo) > 0) {
+                                const { precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(prev.precio_costo, porcentajeMargen, true, val, prev.contenido_blister)
+                                updated.precio_caja = precio_caja
+                                updated.precio_blister = precio_blister
+                                updated.precio_unidad = precio_unidad
+                              }
+                              return updated
+                            })
+                          }}
                         />
                       </div>
 
@@ -970,12 +1167,36 @@ export default function InventarioPage() {
                           className="input-field"
                           placeholder="Ej: 10"
                           value={formProducto.contenido_blister}
-                          onChange={e => setFormProducto({ ...formProducto, contenido_blister: e.target.value })}
+                          onChange={e => {
+                            const val = e.target.value
+                            setFormProducto(prev => {
+                              const updated = { ...prev, contenido_blister: val }
+                              if (parseFloat(prev.precio_costo) > 0) {
+                                const { precio_caja, precio_blister, precio_unidad } = calcularPreciosDerivados(prev.precio_costo, porcentajeMargen, true, prev.contenido_caja, val)
+                                updated.precio_caja = precio_caja
+                                updated.precio_blister = precio_blister
+                                updated.precio_unidad = precio_unidad
+                              }
+                              return updated
+                            })
+                          }}
                         />
                       </div>
                     </div>
 
                     {/* Precios por presentación */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs font-bold text-dark-300">Precios por Presentación:</span>
+                      <button
+                        type="button"
+                        onClick={handleBotonCalcular}
+                        className="text-[11px] font-bold text-primary-400 hover:text-primary-300 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        <Sparkles size={11} className="text-amber-400" />
+                        Autocalcular Caja, Blíster y Unidad
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs text-dark-400 font-semibold mb-1">Precio Venta Caja ($)</label>

@@ -3,7 +3,8 @@ import { productosApi, configApi } from '../../api/services'
 import {
   Package, Search, Plus, Edit, Trash2, X,
   Layers, Pill, Settings, ChevronLeft, ChevronRight,
-  DollarSign, Percent, Barcode, CheckCircle, AlertCircle
+  DollarSign, Percent, Barcode, CheckCircle, AlertCircle,
+  Sparkles, Calculator
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
@@ -614,9 +615,33 @@ export default function ParametrosProductos() {
 
               {/* Sección 3: Calculadora Bidireccional de Ganancia */}
               <div className="space-y-3 pt-3 border-t border-dark-700">
-                <span className="text-xs font-bold text-primary-400 uppercase tracking-wider block">
-                  3. Costo y Calculadora Bidireccional de Ganancia
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-primary-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calculator size={14} /> 3. Costo y Calculadora Bidireccional de Ganancia
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const c = parseFloat(form.precio_costo) || 0
+                      if (c <= 0) {
+                        toast.error('Ingresa primero el Costo Unitario ($)')
+                        return
+                      }
+                      const m = parseFloat(form.porcentaje_ganancia) || margenDefecto
+                      const p = calcularPrecioDesdeCosto(c, m, modoRedondeo)
+                      setForm(prev => ({
+                        ...prev,
+                        precio_venta: p,
+                        precio_caja: prev.maneja_fracciones ? p : prev.precio_caja,
+                      }))
+                      toast.success(`✓ Precio calculado: ${formatCOP(p)} (+${m}% margen)`)
+                    }}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <Sparkles size={12} className="text-amber-400 animate-pulse" />
+                    ⚡ Calcular Automático (+{form.porcentaje_ganancia || margenDefecto}%)
+                  </button>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-dark-900/60 p-3.5 rounded-xl border border-dark-700">
                   <div>
