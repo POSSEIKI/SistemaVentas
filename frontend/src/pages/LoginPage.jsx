@@ -77,7 +77,7 @@ export default function LoginPage() {
               <ShoppingCart size={28} className="text-white" />
             </Link>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">Iniciar Sesión</h1>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1">Ingresa tus credenciales para acceder a tu POS</p>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">Ingresa tu correo electrónico y contraseña para acceder</p>
           </div>
 
           {/* Form */}
@@ -91,31 +91,35 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Correo Electrónico o Usuario
+                Correo Electrónico <span className="text-emerald-400">*</span>
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
+                  inputMode="email"
+                  autoComplete="username email"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="ej: tu_correo@ejemplo.com o tu usuario"
+                  placeholder="tu_correo@ejemplo.com (o usuario)"
                   autoCapitalize="none"
                   autoCorrect="off"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-medium"
                   disabled={loading}
+                  autoFocus
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Contraseña / PIN de Acceso
+                Contraseña / PIN de Acceso <span className="text-emerald-400">*</span>
               </label>
               <div className="relative">
                 <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="password"
+                  autoComplete="current-password"
                   value={codigo}
                   onChange={e => setCodigo(e.target.value)}
                   placeholder="••••••••"
@@ -128,10 +132,10 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 mt-2"
+              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 mt-2 cursor-pointer"
             >
               {loading ? (
-                <span className="animate-pulse">Verificando...</span>
+                <span className="animate-pulse">Verificando acceso...</span>
               ) : (
                 <>
                   <span>Ingresar al Sistema</span>
