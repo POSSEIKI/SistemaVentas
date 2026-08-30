@@ -97,23 +97,64 @@ async def actualizar_configuracion(
         config = ConfiguracionEmpresa(empresa_id=empresa_id)
         db.add(config)
 
-    campos_permitidos = [
+    # Sincronizar campos principales con la tabla Empresa si existe
+    if current_user.empresa_id:
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == current_user.empresa_id))
+        emp = res_emp.scalar_one_or_none()
+        if emp:
+            if "nombre" in datos and datos["nombre"]:
+                emp.nombre = str(datos["nombre"]).strip()
+            if "nit" in datos and datos["nit"] is not None:
+                emp.nit = str(datos["nit"]).strip()
+            if "telefono" in datos and datos["telefono"] is not None:
+                emp.telefono = str(datos["telefono"]).strip()
+            if "direccion" in datos and datos["direccion"] is not None:
+                emp.direccion = str(datos["direccion"]).strip()
+            if "ciudad" in datos and datos["ciudad"] is not None:
+                emp.ciudad = str(datos["ciudad"]).strip()
+            if "email" in datos and datos["email"] is not None:
+                emp.email = str(datos["email"]).strip()
+            if "rubro" in datos and datos["rubro"]:
+                emp.rubro = str(datos["rubro"]).strip().upper()
+
+    str_fields = [
         "nombre", "nit", "direccion", "telefono", "email", "ciudad",
         "regimen", "logo_url", "mensaje_factura", "moneda_simbolo",
-        "moneda_decimales", "factura_prefijo", "iva_porcentaje", "iva_incluido",
-        "domicilio_corta", "domicilio_media", "domicilio_larga",
-        "domicilio_tarifa_base", "domicilio_costo_por_km", "domicilio_gratis_desde",
-        "rubro", "margen_ganancia_predeterminado", "modo_redondeo",
-        "formato_impresion", "resolucion_dian", "pais", "zona_horaria",
-        "fe_habilitada", "fe_proveedor", "fe_ambiente", "fe_client_id",
-        "fe_client_secret", "fe_rango_id", "fe_tipo_documento", "fe_municipio_id",
+        "factura_prefijo", "rubro", "modo_redondeo", "formato_impresion",
+        "resolucion_dian", "pais", "zona_horaria", "fe_proveedor",
+        "fe_ambiente", "fe_client_id", "fe_client_secret", "fe_rango_id",
+        "fe_tipo_documento", "fe_municipio_id"
     ]
+    numeric_fields = [
+        "iva_porcentaje", "domicilio_corta", "domicilio_media", "domicilio_larga",
+        "domicilio_tarifa_base", "domicilio_costo_por_km", "domicilio_gratis_desde",
+        "margen_ganancia_predeterminado"
+    ]
+    bool_fields = ["iva_incluido", "fe_habilitada"]
+    int_fields = ["moneda_decimales"]
+
+    # Mapear alias comunes
+    if "fe_numbering_range_id" in datos and not datos.get("fe_rango_id"):
+        datos["fe_rango_id"] = str(datos["fe_numbering_range_id"] or "")
+    if "fe_tipo_documento_defecto" in datos and not datos.get("fe_tipo_documento"):
+        datos["fe_tipo_documento"] = str(datos["fe_tipo_documento_defecto"] or "POS_ELECTRONICO")
+
     for campo, valor in datos.items():
-        if campo in campos_permitidos:
-            setattr(config, campo, valor)
+        if campo in str_fields:
+            setattr(config, campo, str(valor or "").strip() if valor is not None else "")
+        elif campo in numeric_fields:
+            setattr(config, campo, _safe_float(valor, 0.0))
+        elif campo in bool_fields:
+            setattr(config, campo, bool(valor))
+        elif campo in int_fields:
+            try:
+                setattr(config, campo, int(valor) if valor is not None else 0)
+            except (ValueError, TypeError):
+                setattr(config, campo, 0)
+
     config.empresa_id = empresa_id
     await db.commit()
-    return {"mensaje": "Configuración actualizada"}
+    return {"mensaje": "Configuración actualizada correctamente"}
 
 @router.post("/factus/probar-conexion")
 async def probar_conexion_factus(

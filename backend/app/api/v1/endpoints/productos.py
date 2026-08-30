@@ -631,7 +631,11 @@ async def aplicar_redondeo_global(
 ):
     from app.models.configuracion import ConfiguracionEmpresa
     empresa_id = current_user.empresa_id or 1
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     cfg = res_cfg.scalar_one_or_none()
     modo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
 
@@ -656,26 +660,37 @@ async def aplicar_redondeo_global(
     modificados = 0
     for p in prods:
         changed = False
-        if p.precio_venta is not None:
-            new_v = Decimal(str(_redondear(float(p.precio_venta), modo)))
-            if p.precio_venta != new_v:
-                p.precio_venta = new_v
-                changed = True
-        if p.precio_caja is not None and float(p.precio_caja) > 0:
-            new_c = Decimal(str(_redondear(float(p.precio_caja), modo)))
-            if p.precio_caja != new_c:
-                p.precio_caja = new_c
-                changed = True
-        if p.precio_blister is not None and float(p.precio_blister) > 0:
-            new_b = Decimal(str(_redondear(float(p.precio_blister), modo)))
-            if p.precio_blister != new_b:
-                p.precio_blister = new_b
-                changed = True
-        if p.precio_unidad is not None and float(p.precio_unidad) > 0:
-            new_u = Decimal(str(_redondear(float(p.precio_unidad), modo)))
-            if p.precio_unidad != new_u:
-                p.precio_unidad = new_u
-                changed = True
+        try:
+            if p.precio_venta is not None:
+                v = float(p.precio_venta)
+                if v > 0:
+                    new_v = Decimal(str(_redondear(v, modo)))
+                    if p.precio_venta != new_v:
+                        p.precio_venta = new_v
+                        changed = True
+            if p.precio_caja is not None:
+                c = float(p.precio_caja)
+                if c > 0:
+                    new_c = Decimal(str(_redondear(c, modo)))
+                    if p.precio_caja != new_c:
+                        p.precio_caja = new_c
+                        changed = True
+            if p.precio_blister is not None:
+                b = float(p.precio_blister)
+                if b > 0:
+                    new_b = Decimal(str(_redondear(b, modo)))
+                    if p.precio_blister != new_b:
+                        p.precio_blister = new_b
+                        changed = True
+            if p.precio_unidad is not None:
+                u = float(p.precio_unidad)
+                if u > 0:
+                    new_u = Decimal(str(_redondear(u, modo)))
+                    if p.precio_unidad != new_u:
+                        p.precio_unidad = new_u
+                        changed = True
+        except Exception:
+            continue
         if changed:
             modificados += 1
 

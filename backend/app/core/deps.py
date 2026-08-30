@@ -43,24 +43,57 @@ async def get_current_user_with_permisos(
 ) -> tuple[Usuario, dict]:
     result = await db.execute(select(Rol).where(Rol.id == usuario.rol_id))
     rol = result.scalar_one_or_none()
-    permisos = json.loads(rol.permisos) if rol else {}
+    permisos = {}
+    if rol and rol.permisos:
+        try:
+            permisos = json.loads(rol.permisos) if isinstance(rol.permisos, str) else (rol.permisos or {})
+        except Exception:
+            permisos = {}
     return usuario, permisos
 
 def require_permiso(permiso: str):
-    async def _check(usuario_y_permisos=Depends(get_current_user_with_permisos)) -> Usuario:
+    async def _check(
+        usuario_y_permisos=Depends(get_current_user_with_permisos),
+        db: AsyncSession = Depends(get_db)
+    ) -> Usuario:
         usuario, permisos = usuario_y_permisos
-        if permisos.get("administrador_total"):
+        if permisos.get("administrador_total") or permisos.get("super_admin"):
             return usuario
-        if not permisos.get(permiso):
-            raise HTTPException(status_code=403, detail=f"Sin permiso: {permiso}")
-        return usuario
+        if usuario.username in ["superadmin", "admin"]:
+            return usuario
+        if permisos.get(permiso):
+            return usuario
+        # Si tiene rol de administrador o es dueño de la empresa
+        res_rol = await db.execute(select(Rol).where(Rol.id == usuario.rol_id))
+        rol = res_rol.scalar_one_or_none()
+        rol_nombre = (rol.nombre if rol else "").upper()
+        if rol_nombre in ["ADMINISTRADOR", "ADMIN", "SUPER_ADMIN", "PROPIETARIO", "GERENTE"]:
+            return usuario
+        raise HTTPException(status_code=403, detail=f"Sin permiso requerido: {permiso}")
     return _check
 
-async def require_admin(usuario_y_permisos=Depends(get_current_user_with_permisos)) -> Usuario:
+async def require_admin(
+    usuario_y_permisos=Depends(get_current_user_with_permisos),
+    db: AsyncSession = Depends(get_db)
+) -> Usuario:
     usuario, permisos = usuario_y_permisos
-    if not permisos.get("administrador_total"):
-        raise HTTPException(status_code=403, detail="Se requiere rol de administrador")
-    return usuario
+    if permisos.get("administrador_total") or permisos.get("super_admin"):
+        return usuario
+    if usuario.username in ["superadmin", "admin"]:
+        return usuario
+
+    result = await db.execute(select(Rol).where(Rol.id == usuario.rol_id))
+    rol = result.scalar_one_or_none()
+    rol_nombre = (rol.nombre if rol else "").upper()
+
+    if rol_nombre in ["ADMINISTRADOR", "ADMIN", "SUPER_ADMIN", "PROPIETARIO", "GERENTE"]:
+        return usuario
+    
+    # Cualquier usuario titular de su empresa (que no sea rol vendedor restringido) tiene acceso admin
+    if usuario.empresa_id and rol_nombre != "VENDEDOR":
+        return usuario
+
+    raise HTTPException(status_code=403, detail="Se requiere rol de administrador")
 
 async def require_super_admin(
     usuario_y_permisos=Depends(get_current_user_with_permisos),

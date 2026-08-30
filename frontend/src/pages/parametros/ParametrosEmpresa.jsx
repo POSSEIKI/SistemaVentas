@@ -281,19 +281,53 @@ export default function ParametrosEmpresa() {
     }
   }
 
+  const prepararPayload = (datos) => ({
+    ...datos,
+    nombre: (datos.nombre || '').trim(),
+    nit: (datos.nit || '').trim(),
+    telefono: (datos.telefono || '').trim(),
+    email: (datos.email || '').trim(),
+    ciudad: (datos.ciudad || '').trim(),
+    direccion: (datos.direccion || '').trim(),
+    rubro: datos.rubro || 'FARMACIA',
+    margen_ganancia_predeterminado: parseFloat(datos.margen_ganancia_predeterminado) || 30.0,
+    modo_redondeo: datos.modo_redondeo || 'CENTENA_100',
+    formato_impresion: datos.formato_impresion || '80MM',
+    pais: datos.pais || 'Colombia',
+    zona_horaria: datos.zona_horaria || 'America/Bogota',
+    domicilio_corta: parseFloat(datos.domicilio_corta) || 0,
+    domicilio_media: parseFloat(datos.domicilio_media) || 0,
+    domicilio_larga: parseFloat(datos.domicilio_larga) || 0,
+    domicilio_tarifa_base: parseFloat(datos.domicilio_tarifa_base) || 0,
+    domicilio_costo_por_km: parseFloat(datos.domicilio_costo_por_km) || 0,
+    domicilio_gratis_desde: parseFloat(datos.domicilio_gratis_desde) || 0,
+    iva_porcentaje: parseFloat(datos.iva_porcentaje) || 0,
+    iva_incluido: Boolean(datos.iva_incluido),
+    moneda_decimales: parseInt(datos.moneda_decimales) || 0,
+    fe_habilitada: Boolean(datos.fe_habilitada),
+    fe_ambiente: datos.fe_ambiente || 'SANDBOX',
+    fe_client_id: (datos.fe_client_id || '').trim(),
+    fe_client_secret: (datos.fe_client_secret || '').trim(),
+    fe_rango_id: (datos.fe_rango_id || datos.fe_numbering_range_id || '').trim(),
+    fe_tipo_documento: datos.fe_tipo_documento || datos.fe_tipo_documento_defecto || 'POS_ELECTRONICO',
+    fe_municipio_id: (datos.fe_municipio_id || '980').trim(),
+  })
+
   const guardar = async (e) => {
     e?.preventDefault()
     setGuardando(true)
     try {
-      await configApi.update(form)
+      const payload = prepararPayload(form)
+      await configApi.update(payload)
       // Si cambió el modo de redondeo, aplicarlo globalmente al catálogo
-      if (form.modo_redondeo && form.modo_redondeo !== config.modo_redondeo) {
+      if (payload.modo_redondeo && payload.modo_redondeo !== config.modo_redondeo) {
         await productosApi.aplicarRedondeoGlobal()
-        toast.success(`Parámetros guardados y regla de redondeo aplicada a todo el catálogo`)
+        toast.success('✓ Parámetros guardados y regla de redondeo aplicada al catálogo')
       } else {
-        toast.success('Parámetros de empresa guardados exitosamente')
+        toast.success('✓ Parámetros de empresa guardados exitosamente')
       }
-      setConfig({ ...form })
+      setConfig({ ...payload })
+      setForm({ ...payload })
     } catch (err) {
       toast.error(err.response?.data?.detail || err.message || 'Error al guardar parámetros')
     } finally {
@@ -304,10 +338,12 @@ export default function ParametrosEmpresa() {
   const handleAplicarRedondeoGlobal = async () => {
     setAplicandoRedondeo(true)
     try {
-      await configApi.update(form)
+      const payload = prepararPayload(form)
+      await configApi.update(payload)
       const res = await productosApi.aplicarRedondeoGlobal()
-      setConfig({ ...form })
-      toast.success(res.mensaje || 'Redondeo aplicado con éxito a todo el catálogo')
+      setConfig({ ...payload })
+      setForm({ ...payload })
+      toast.success(res.mensaje || '✓ Redondeo aplicado con éxito a todo el catálogo')
     } catch (err) {
       toast.error(err.response?.data?.detail || err.message || 'Error al aplicar redondeo')
     } finally {
