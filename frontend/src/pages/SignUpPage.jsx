@@ -65,6 +65,10 @@ export default function SignUpPage() {
       setError('Ingresa el nombre del administrador')
       return
     }
+    if (!formData.admin_email.trim() || !formData.admin_email.includes('@')) {
+      setError('Ingresa un correo electrónico válido para tu cuenta')
+      return
+    }
     if (!formData.admin_username.trim()) {
       setError('Ingresa un nombre de usuario para acceder')
       return
@@ -348,7 +352,9 @@ export default function SignUpPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">Correo Electrónico</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Correo Electrónico <span className="text-emerald-400">*</span>
+              </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
@@ -357,7 +363,8 @@ export default function SignUpPage() {
                   value={formData.admin_email}
                   onChange={handleChange}
                   placeholder="admin@midrogueria.com"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-medium"
+                  required
                 />
               </div>
             </div>

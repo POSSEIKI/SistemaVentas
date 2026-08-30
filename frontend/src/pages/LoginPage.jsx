@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../api/services'
-import { ShoppingCart, Lock, User, AlertCircle, ArrowLeft, ArrowRight, Sparkles, UserPlus } from 'lucide-react'
+import { ShoppingCart, Lock, User, Mail, AlertCircle, ArrowLeft, ArrowRight, Sparkles, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!username.trim() || !codigo.trim()) {
-      setError('Ingresa tu usuario y contraseña / PIN')
+      setError('Ingresa tu correo / usuario y contraseña o PIN')
       return
     }
     setLoading(true)
@@ -91,18 +91,18 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Usuario
+                Correo Electrónico o Usuario
               </label>
               <div className="relative">
-                <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="usuario_admin"
+                  placeholder="ej: tu_correo@ejemplo.com o tu usuario"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 font-medium"
                   disabled={loading}
                 />
               </div>

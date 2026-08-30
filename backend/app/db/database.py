@@ -102,6 +102,9 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_telefono VARCHAR(50);"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_notas TEXT;"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_distancia_km NUMERIC(6, 2);"))
+                # Columna de correo electrónico en usuarios para login unificado
+                await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(150);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_usuarios_email ON usuarios(email);"))
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:

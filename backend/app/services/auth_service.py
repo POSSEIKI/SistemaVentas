@@ -1,7 +1,7 @@
 import json
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from app.models.usuario import Rol, Usuario
 from app.models.configuracion import ConfiguracionEmpresa
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
@@ -37,6 +37,7 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
     admin = Usuario(
         nombre=request.admin_nombre,
         username=request.admin_username.strip().lower(),
+        email=getattr(request, "admin_email", None) or None,
         codigo_hash=hash_password(request.admin_codigo),
         rol_id=rol_admin.id,
     )
@@ -65,7 +66,13 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
 async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
     u_clean = (request.username or "").strip().lower()
     result = await db.execute(
-        select(Usuario).where(func.lower(Usuario.username) == u_clean, Usuario.activo == True)
+        select(Usuario).where(
+            or_(
+                func.lower(Usuario.username) == u_clean,
+                func.lower(Usuario.email) == u_clean
+            ),
+            Usuario.activo == True
+        )
     )
     usuario = result.scalar_one_or_none()
 

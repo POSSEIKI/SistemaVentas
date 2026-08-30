@@ -130,11 +130,23 @@ def _crear_slug(nombre: str) -> str:
 
 async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: AsyncSession) -> dict:
     """Registra una nueva empresa, su usuario administrador y activa el periodo de prueba gratis."""
-    # 1. Validar que el username no esté en uso
+    # 1. Validar que el username o email no estén en uso
     username_clean = datos.admin_username.strip().lower()
-    res_usr = await db.execute(select(Usuario).where(Usuario.username == username_clean))
+    email_clean = datos.admin_email.strip().lower() if datos.admin_email else None
+
+    res_usr = await db.execute(
+        select(Usuario).where(
+            or_(
+                Usuario.username == username_clean,
+                Usuario.email == email_clean if email_clean else False
+            )
+        )
+    )
     if res_usr.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso. Por favor elige otro.")
+        raise HTTPException(
+            status_code=400,
+            detail="El nombre de usuario o correo electrónico ya está registrado. Por favor inicia sesión o usa otro correo."
+        )
 
     # 2. Asegurar planes
     await inicializar_planes_predeterminados(db)
@@ -153,7 +165,7 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
         nit=datos.empresa_nit.strip() if datos.empresa_nit else "",
         rubro=datos.rubro.strip().upper(),
         slug=slug,
-        email=datos.admin_email.strip() if datos.admin_email else "",
+        email=email_clean or "",
         telefono=datos.empresa_telefono.strip() if datos.empresa_telefono else "",
         direccion=datos.empresa_direccion.strip() if datos.empresa_direccion else "",
         ciudad=datos.empresa_ciudad.strip() if datos.empresa_ciudad else "",
@@ -170,10 +182,11 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
         db.add(rol_admin)
         await db.flush()
 
-    # 6. Crear Usuario Administrador
+    # 6. Crear Usuario Administrador con Email
     admin = Usuario(
         nombre=datos.admin_nombre.strip(),
         username=username_clean,
+        email=email_clean,
         codigo_hash=hash_password(datos.admin_codigo),
         rol_id=rol_admin.id,
         empresa_id=empresa.id,

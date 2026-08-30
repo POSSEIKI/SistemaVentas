@@ -17,6 +17,7 @@ class Usuario(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String(100), nullable=False)
     username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(150), nullable=True, index=True)
     codigo_hash = Column(String(255), nullable=False)
     rol_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="SET NULL"), nullable=True)
