@@ -393,13 +393,13 @@ export default function InventarioPage() {
   const filtrados = productos
 
   return (
-    <div className="p-4 max-w-6xl mx-auto space-y-4">
+    <div className="p-2.5 sm:p-4 max-w-6xl mx-auto space-y-3 sm:space-y-4 w-full min-w-0">
 
       {/* ── Encabezado & Acciones Principales ──────────────────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Package size={24} className="text-primary-500" />
+          <h1 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+            <Package size={22} className="text-primary-500" />
             Catálogo e Inventario
           </h1>
           <p className="text-dark-500 text-xs mt-0.5">
@@ -407,49 +407,50 @@ export default function InventarioPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full max-w-full touch-pan-x flex-nowrap sm:flex-wrap">
+        {/* Botones de acción: cuadrícula 2x2 ajustada en móvil y fila en desktop */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2 w-full lg:w-auto">
           {/* Botón Descargar Hoja de Toma Física */}
           <button
             onClick={handleDescargarTomaFisica}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-primary-500 hover:text-primary-400 transition-colors flex-shrink-0 whitespace-nowrap"
+            className="btn-secondary flex items-center justify-center gap-1.5 py-2 px-2.5 sm:px-3 text-xs hover:border-primary-500 hover:text-primary-400 transition-colors whitespace-nowrap"
             title="Descarga el inventario actual en Excel con columnas para conteo físico"
           >
-            <Download size={15} />
-            <span>Hoja Toma Física (.xlsx)</span>
+            <Download size={14} className="text-primary-400" />
+            <span>Hoja Toma (.xlsx)</span>
           </button>
 
           {/* Botón Conciliar / Ajustar Inventario Físico */}
           <button
             onClick={() => { setResumenAjuste(null); setArchivoAjuste(null); setModalAjusteFisico(true) }}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-amber-500 hover:text-amber-400 transition-colors bg-amber-950/20 border-amber-800/40 text-amber-300 flex-shrink-0 whitespace-nowrap"
+            className="btn-secondary flex items-center justify-center gap-1.5 py-2 px-2.5 sm:px-3 text-xs hover:border-amber-500 hover:text-amber-400 transition-colors bg-amber-950/20 border-amber-800/40 text-amber-300 whitespace-nowrap"
             title="Cargar archivo Excel con conteo físico para calcular desfase y actualizar stock"
           >
-            <Scale size={15} />
+            <Scale size={14} className="text-amber-400" />
             <span>Conciliar Físico</span>
           </button>
 
           {/* Botón Importar Catálogo */}
           <button
             onClick={() => setModalImportar(true)}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs flex-shrink-0 whitespace-nowrap"
+            className="btn-secondary flex items-center justify-center gap-1.5 py-2 px-2.5 sm:px-3 text-xs whitespace-nowrap"
           >
-            <Upload size={15} />
+            <Upload size={14} />
             <span>Importar Catálogo</span>
           </button>
 
           {/* Botón Nuevo Producto */}
           <button
             onClick={abrirCrear}
-            className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-xs font-bold shadow-md flex-shrink-0 whitespace-nowrap"
+            className="btn-primary flex items-center justify-center gap-1.5 py-2 px-3 sm:px-3.5 text-xs font-bold shadow-md whitespace-nowrap"
           >
-            <Plus size={16} />
+            <Plus size={15} />
             <span>Nuevo Producto</span>
           </button>
         </div>
       </div>
 
       {/* ── Barra de Búsqueda y Filtro ─────────────────────────────── */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-2 sm:gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
           <input
@@ -528,19 +529,32 @@ export default function InventarioPage() {
         )}
       </div>
 
-      {/* ── Tabla de Productos ─────────────────────────────────────── */}
-      <div className="card p-0 overflow-hidden shadow-lg border border-dark-700 w-full max-w-full">
-        <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
-          <table className="w-full min-w-[780px] text-sm">
-            <thead className="border-b border-dark-700 bg-dark-800/90">
-              <tr className="text-dark-400 text-left text-xs font-semibold uppercase tracking-wider">
-                <th className="px-4 py-3">Código</th>
-                <th className="px-4 py-3">Producto / Presentación</th>
-                <th className="px-4 py-3">Categoría / Marca</th>
-                <th className="px-4 py-3 text-right">P. Venta</th>
-                <th className="px-4 py-3 text-right">P. Costo</th>
-                <th className="px-4 py-3 text-right">Stock Actual</th>
-                <th className="px-4 py-3 text-center">Acciones</th>
+      {/* ── Tabla de Productos con Desplazamiento Horizontal Táctil ────────────────── */}
+      <div className="card p-0 shadow-lg border border-dark-700 w-full max-w-full">
+        <div className="px-3 sm:px-4 py-2.5 border-b border-dark-700 flex justify-between items-center bg-dark-800/90">
+          <div className="flex items-center gap-2">
+            <span className="text-white font-semibold text-xs sm:text-sm">Artículos en Catálogo</span>
+            <span className="text-[10px] text-primary-400 bg-primary-950/80 border border-primary-800/60 px-1.5 py-0.5 rounded font-mono font-bold sm:hidden">
+              ↔ Deslizar
+            </span>
+          </div>
+          <span className="text-dark-500 text-[10px] sm:text-xs font-mono">{totalProductos} productos</span>
+        </div>
+
+        <div
+          className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+        >
+          <table className="w-full min-w-[780px] text-xs sm:text-sm" style={{ touchAction: 'pan-x' }}>
+            <thead className="border-b border-dark-700 bg-dark-900/60">
+              <tr className="text-dark-400 text-left text-[11px] sm:text-xs font-semibold uppercase tracking-wider">
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Código</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Producto / Presentación</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Categoría / Marca</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-right">P. Venta</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-right">P. Costo</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-right">Stock Actual</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-700/70">
