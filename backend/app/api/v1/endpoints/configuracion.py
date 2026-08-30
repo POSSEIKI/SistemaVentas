@@ -30,9 +30,14 @@ async def _obtener_config_empresa(db: AsyncSession, empresa_id: int) -> Configur
 
     # 3. Si no existe, crearla con los datos de la empresa
     if not config:
+        from sqlalchemy import func
         res_emp = await db.execute(select(Empresa).where(Empresa.id == empresa_id))
         emp = res_emp.scalars().first()
+        res_max = await db.execute(select(func.coalesce(func.max(ConfiguracionEmpresa.id), 0)))
+        next_id = (res_max.scalar() or 0) + 1
+
         config = ConfiguracionEmpresa(
+            id=next_id,
             empresa_id=empresa_id,
             nombre=emp.nombre if emp and emp.nombre else "Mi Empresa",
             nit=emp.nit if emp and emp.nit else "",

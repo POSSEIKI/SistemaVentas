@@ -211,7 +211,10 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
     db.add(suscripcion)
 
     # 8. Crear Configuración Empresa aislada para este tenant
+    res_max_cfg = await db.execute(select(func.coalesce(func.max(ConfiguracionEmpresa.id), 0)))
+    next_cfg_id = (res_max_cfg.scalar() or 0) + 1
     cfg = ConfiguracionEmpresa(
+        id=next_cfg_id,
         empresa_id=empresa.id,
         nombre=datos.empresa_nombre,
         nit=datos.empresa_nit or "",

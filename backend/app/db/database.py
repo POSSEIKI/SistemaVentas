@@ -102,6 +102,14 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_rango_id VARCHAR(50) DEFAULT '';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_tipo_documento VARCHAR(50) DEFAULT 'POS_ELECTRONICO';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_municipio_id VARCHAR(20) DEFAULT '980';"))
+
+                # Secuencias autoincrementales automáticas
+                try:
+                    await conn.execute(text("CREATE SEQUENCE IF NOT EXISTS configuracion_empresa_id_seq;"))
+                    await conn.execute(text("SELECT setval('configuracion_empresa_id_seq', COALESCE((SELECT MAX(id) FROM configuracion_empresa), 0) + 1, false);"))
+                    await conn.execute(text("ALTER TABLE configuracion_empresa ALTER COLUMN id SET DEFAULT nextval('configuracion_empresa_id_seq');"))
+                except Exception as seq_err:
+                    logger.warning(f"Aviso en secuencia configuracion_empresa: {seq_err}")
                 # Columnas en facturas para CUFE y QR
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS cufe VARCHAR(255);"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS qr_cadena TEXT;"))
