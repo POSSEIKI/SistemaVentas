@@ -318,4 +318,16 @@ async def logs_fallos_plataforma(
             "estado": f.dian_estado if f.dian_estado == "RECHAZADA" else f.estado,
         })
 
-    return logs
+@router.post("/impersonate/{username}")
+async def impersonar_usuario(
+    username: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_super_admin),
+):
+    from app.core.security import create_access_token
+    res = await db.execute(select(Usuario).where(Usuario.username == username.strip().lower()))
+    usr = res.scalars().first()
+    if not usr:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    token = create_access_token({"sub": usr.username})
+    return {"access_token": token, "username": usr.username, "empresa_id": usr.empresa_id, "rol_id": usr.rol_id}

@@ -95,6 +95,8 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Dep
     }
 
 @router.patch("/empresa")
+@router.put("/empresa")
+@router.post("/empresa")
 async def actualizar_configuracion(
     datos: dict,
     db: AsyncSession = Depends(get_db),

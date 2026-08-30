@@ -40,8 +40,22 @@ api.interceptors.response.use(
     }
 
     let msg = error.response?.data?.detail
+    if (Array.isArray(msg)) {
+      msg = msg.map(e => e.msg || JSON.stringify(e)).join(', ')
+    } else if (typeof msg === 'object' && msg !== null) {
+      msg = msg.mensaje || msg.detail || JSON.stringify(msg)
+    }
+
     if (!msg) {
-      if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+      if (error.response?.data?.mensaje) {
+        msg = error.response.data.mensaje
+      } else if (error.response?.status === 403) {
+        msg = 'No tienes permisos de administrador para realizar esta acción.'
+      } else if (error.response?.status === 404) {
+        msg = 'Recurso no encontrado en el servidor.'
+      } else if (error.response?.status >= 500) {
+        msg = 'Error interno del servidor. Por favor reintenta.'
+      } else if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
         msg = 'El servidor está iniciando o reconectando. Por favor reintenta en unos segundos.'
       } else {
         msg = error.message || 'Error de conexión con el servidor'
