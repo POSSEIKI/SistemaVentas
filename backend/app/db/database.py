@@ -122,22 +122,25 @@ async def init_db() -> None:
 
                 # Asegurar que índices únicos sean multi-tenant y no globales
                 try:
-                    await conn.execute(text("ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_nit_key;"))
-                    await conn.execute(text("DROP INDEX IF EXISTS ix_clientes_nit;"))
+                    await conn.execute(text("ALTER TABLE clientes DROP CONSTRAINT IF EXISTS clientes_nit_key CASCADE;"))
+                    await conn.execute(text("ALTER TABLE clientes DROP CONSTRAINT IF EXISTS ix_clientes_nit CASCADE;"))
+                    await conn.execute(text("DROP INDEX IF EXISTS ix_clientes_nit CASCADE;"))
                     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_clientes_empresa_nit ON clientes(empresa_id, nit);"))
                 except Exception as err_cli:
                     logger.warning(f"Aviso en indice clientes: {err_cli}")
 
                 try:
-                    await conn.execute(text("ALTER TABLE proveedores DROP CONSTRAINT IF EXISTS proveedores_nit_key;"))
-                    await conn.execute(text("DROP INDEX IF EXISTS ix_proveedores_nit;"))
+                    await conn.execute(text("ALTER TABLE proveedores DROP CONSTRAINT IF EXISTS proveedores_nit_key CASCADE;"))
+                    await conn.execute(text("ALTER TABLE proveedores DROP CONSTRAINT IF EXISTS ix_proveedores_nit CASCADE;"))
+                    await conn.execute(text("DROP INDEX IF EXISTS ix_proveedores_nit CASCADE;"))
                     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_proveedores_empresa_nit ON proveedores(empresa_id, nit);"))
                 except Exception as err_prov:
                     logger.warning(f"Aviso en indice proveedores: {err_prov}")
 
                 try:
-                    await conn.execute(text("ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_codigo_key;"))
-                    await conn.execute(text("DROP INDEX IF EXISTS ix_productos_codigo;"))
+                    await conn.execute(text("ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_codigo_key CASCADE;"))
+                    await conn.execute(text("ALTER TABLE productos DROP CONSTRAINT IF EXISTS ix_productos_codigo CASCADE;"))
+                    await conn.execute(text("DROP INDEX IF EXISTS ix_productos_codigo CASCADE;"))
                     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_productos_empresa_codigo ON productos(empresa_id, codigo);"))
                 except Exception as err_prod:
                     logger.warning(f"Aviso en indice productos: {err_prod}")

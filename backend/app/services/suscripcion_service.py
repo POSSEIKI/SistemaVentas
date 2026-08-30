@@ -239,6 +239,13 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
 
         # 8.1 Crear Cliente Mostrador inicial para la nueva empresa
         from app.models.cliente import Cliente
+        from sqlalchemy import text
+        try:
+            await db.execute(text("ALTER TABLE clientes DROP CONSTRAINT IF EXISTS ix_clientes_nit CASCADE;"))
+            await db.execute(text("DROP INDEX IF EXISTS ix_clientes_nit CASCADE;"))
+        except Exception:
+            pass
+
         res_cli_exist = await db.execute(
             select(Cliente).where(Cliente.empresa_id == empresa.id)
         )
