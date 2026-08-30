@@ -75,50 +75,66 @@ export default function ReportesPage() {
   }
 
   return (
-    <div className="p-4 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
-          <BarChart2 size={22} className="text-primary-500" />
+    <div className="p-2.5 sm:p-4 max-w-5xl mx-auto space-y-3 sm:space-y-4 w-full min-w-0">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+          <BarChart2 size={20} className="text-primary-500" />
           Reportes y Devoluciones
         </h1>
-        <input type="date" className="input-field w-auto py-2 font-mono text-sm" value={fecha}
-          onChange={e => setFecha(e.target.value)} />
+        <input
+          type="date"
+          className="input-field w-auto py-1.5 px-3 font-mono text-xs sm:text-sm bg-dark-800"
+          value={fecha}
+          onChange={e => setFecha(e.target.value)}
+        />
       </div>
 
-      {/* Tarjetas resumen */}
+      {/* Tarjetas resumen compactas y adaptadas para móvil */}
       {resumen && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full">
           {[
-            { label: 'Ventas del día', valor: formatCOP(resumen.total_ventas), icon: TrendingUp, color: 'text-primary-400' },
-            { label: 'Facturas emitidas', valor: resumen.total_facturas, icon: FileText, color: 'text-blue-400' },
-            { label: 'IVA generado', valor: formatCOP(resumen.total_iva), icon: DollarSign, color: 'text-yellow-400' },
-          ].map(({ label, valor, icon: Icon, color }) => (
-            <div key={label} className="card p-3 sm:p-4">
-              <Icon size={20} className={`${color} mb-2`} />
-              <p className="text-dark-500 text-xs">{label}</p>
-              <p className={`text-xl sm:text-2xl font-bold font-mono ${color}`}>{valor}</p>
+            { label: 'Ventas del día', valor: formatCOP(resumen.total_ventas), icon: TrendingUp, color: 'text-primary-400', bg: 'bg-primary-950/20' },
+            { label: 'Facturas', valor: `${resumen.total_facturas}`, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-950/20' },
+            { label: 'IVA generado', valor: formatCOP(resumen.total_iva), icon: DollarSign, color: 'text-yellow-400', bg: 'bg-yellow-950/20' },
+          ].map(({ label, valor, icon: Icon, color, bg }) => (
+            <div key={label} className={`card p-2 sm:p-3.5 flex flex-col justify-between ${bg} border-dark-700/80`}>
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-[10px] sm:text-xs text-dark-400 font-semibold truncate">{label}</span>
+                <Icon size={14} className={`${color} flex-shrink-0`} />
+              </div>
+              <p className={`text-xs sm:text-xl font-black font-mono tracking-tight truncate ${color}`}>
+                {valor}
+              </p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Tabla de facturas */}
+      {/* Tabla de facturas con Desplazamiento Horizontal Táctil */}
       <div className="card p-0 shadow-lg border border-dark-700 w-full max-w-full overflow-hidden">
-        <div className="px-4 py-3 border-b border-dark-700 flex justify-between items-center bg-dark-800/90">
-          <h2 className="text-white font-semibold text-sm">Facturas del día</h2>
-          <span className="text-dark-500 text-xs font-mono">{facturas.length} comprobantes</span>
+        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-dark-700 flex justify-between items-center bg-dark-800/90">
+          <div className="flex items-center gap-2">
+            <h2 className="text-white font-semibold text-xs sm:text-sm">Facturas del día</h2>
+            <span className="text-[10px] text-primary-400 bg-primary-950/80 border border-primary-800/60 px-1.5 py-0.5 rounded font-mono font-bold sm:hidden">
+              ↔ Deslizar
+            </span>
+          </div>
+          <span className="text-dark-500 text-[10px] sm:text-xs font-mono">{facturas.length} comprobantes</span>
         </div>
-        <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
-          <table className="w-full min-w-[740px] text-sm">
-            <thead className="border-b border-dark-700 bg-dark-900/40">
-              <tr className="text-dark-500 text-left text-xs uppercase tracking-wider">
-                <th className="px-4 py-3">N° Factura</th>
-                <th className="px-4 py-3">Hora</th>
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">Forma pago</th>
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 text-center">Acciones</th>
+        <div
+          className="w-full max-w-full overflow-x-auto touch-scroll-x table-responsive-container"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+        >
+          <table className="w-full min-w-[700px] text-xs sm:text-sm" style={{ touchAction: 'pan-x' }}>
+            <thead className="border-b border-dark-700 bg-dark-900/60">
+              <tr className="text-dark-400 text-left text-[11px] sm:text-xs uppercase tracking-wider">
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">N° Factura</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Hora</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Cliente</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Forma pago</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3">Estado</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-right">Total</th>
+                <th className="px-3.5 py-2.5 sm:px-4 sm:py-3 text-center">Acciones</th>
               </tr>
             </thead>
           <tbody className="divide-y divide-dark-700/60">
