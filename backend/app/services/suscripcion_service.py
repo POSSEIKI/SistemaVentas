@@ -280,12 +280,13 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
         }
         rubro_sel = (datos.rubro or "COMERCIO_GENERAL").upper()
         cats_rubro = CATEGORIAS_RUBRO_MAP.get(rubro_sel, CATEGORIAS_RUBRO_MAP["COMERCIO_GENERAL"])
+        res_max_cat = await db.execute(select(func.coalesce(func.max(Categoria.id), 0)))
+        current_cat_id = res_max_cat.scalar() or 0
         for nom_c in cats_rubro:
             rc = await db.execute(select(Categoria).where(Categoria.nombre.ilike(nom_c)))
             if not rc.scalars().first():
-                res_max_cat = await db.execute(select(func.coalesce(func.max(Categoria.id), 0)))
-                next_cat_id = (res_max_cat.scalar() or 0) + 1
-                db.add(Categoria(id=next_cat_id, nombre=nom_c, activo=True))
+                current_cat_id += 1
+                db.add(Categoria(id=current_cat_id, nombre=nom_c, activo=True))
 
         await db.commit()
         await db.refresh(admin)
