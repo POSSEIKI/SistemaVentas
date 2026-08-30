@@ -139,11 +139,11 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full max-w-full touch-pan-x flex-nowrap sm:flex-wrap self-start sm:self-auto">
           <button
             type="button"
             onClick={() => navigate('/ventas')}
-            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-emerald-500 hover:text-emerald-300"
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-emerald-500 hover:text-emerald-300 flex-shrink-0 whitespace-nowrap"
             title="Ir al Punto de Venta"
           >
             <ShoppingCart size={14} className="text-emerald-400" />
@@ -155,7 +155,7 @@ export default function SuperAdminPage() {
             type="button"
             onClick={cargarDatos}
             disabled={cargando}
-            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-amber-500 hover:text-amber-300"
+            className="btn-secondary py-2 px-3 text-xs font-bold flex items-center justify-center gap-1.5 hover:border-amber-500 hover:text-amber-300 flex-shrink-0 whitespace-nowrap"
           >
             <RefreshCw size={14} className={cargando ? 'animate-spin text-amber-400' : ''} />
             <span className="hidden sm:inline">{cargando ? 'Actualizando...' : 'Actualizar'}</span>
@@ -341,8 +341,8 @@ export default function SuperAdminPage() {
           </div>
 
           {/* Tabla de Empresas */}
-          <div className="overflow-x-auto border border-dark-700 rounded-2xl bg-dark-800">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto border border-dark-700 rounded-2xl bg-dark-800 w-full max-w-full touch-scroll-x table-responsive-container">
+            <table className="w-full text-left text-xs min-w-[780px]">
               <thead className="bg-dark-900/90 text-dark-400 text-[10px] uppercase font-bold border-b border-dark-700">
                 <tr>
                   <th className="px-4 py-3">Empresa / Negocio</th>

@@ -87,39 +87,40 @@ export default function ReportesPage() {
 
       {/* Tarjetas resumen */}
       {resumen && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[
             { label: 'Ventas del día', valor: formatCOP(resumen.total_ventas), icon: TrendingUp, color: 'text-primary-400' },
             { label: 'Facturas emitidas', valor: resumen.total_facturas, icon: FileText, color: 'text-blue-400' },
             { label: 'IVA generado', valor: formatCOP(resumen.total_iva), icon: DollarSign, color: 'text-yellow-400' },
           ].map(({ label, valor, icon: Icon, color }) => (
-            <div key={label} className="card">
+            <div key={label} className="card p-3 sm:p-4">
               <Icon size={20} className={`${color} mb-2`} />
               <p className="text-dark-500 text-xs">{label}</p>
-              <p className={`text-2xl font-bold font-mono ${color}`}>{valor}</p>
+              <p className={`text-xl sm:text-2xl font-bold font-mono ${color}`}>{valor}</p>
             </div>
           ))}
         </div>
       )}
 
       {/* Tabla de facturas */}
-      <div className="card p-0 overflow-x-auto">
-        <div className="px-4 py-3 border-b border-dark-700 flex justify-between items-center">
+      <div className="card p-0 shadow-lg border border-dark-700 w-full max-w-full overflow-hidden">
+        <div className="px-4 py-3 border-b border-dark-700 flex justify-between items-center bg-dark-800/90">
           <h2 className="text-white font-semibold text-sm">Facturas del día</h2>
           <span className="text-dark-500 text-xs font-mono">{facturas.length} comprobantes</span>
         </div>
-        <table className="w-full text-sm">
-          <thead className="border-b border-dark-700 bg-dark-900/40">
-            <tr className="text-dark-500 text-left text-xs uppercase tracking-wider">
-              <th className="px-4 py-3">N° Factura</th>
-              <th className="px-4 py-3">Hora</th>
-              <th className="px-4 py-3">Cliente</th>
-              <th className="px-4 py-3">Forma pago</th>
-              <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3 text-right">Total</th>
-              <th className="px-4 py-3 text-center">Acciones</th>
-            </tr>
-          </thead>
+        <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
+          <table className="w-full min-w-[740px] text-sm">
+            <thead className="border-b border-dark-700 bg-dark-900/40">
+              <tr className="text-dark-500 text-left text-xs uppercase tracking-wider">
+                <th className="px-4 py-3">N° Factura</th>
+                <th className="px-4 py-3">Hora</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Forma pago</th>
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-center">Acciones</th>
+              </tr>
+            </thead>
           <tbody className="divide-y divide-dark-700/60">
             {cargando ? (
               <tr><td colSpan={7} className="text-center py-6 text-dark-500">Cargando facturas...</td></tr>
@@ -210,6 +211,7 @@ export default function ReportesPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* ── MODAL: PROCESAR DEVOLUCIÓN (EFECTIVO O BONO) ──────────── */}

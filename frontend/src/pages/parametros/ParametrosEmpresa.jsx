@@ -1030,8 +1030,8 @@ export default function ParametrosEmpresa() {
               </button>
 
               {mostrarHistorialResoluciones && (
-                <div className="mt-2 overflow-x-auto border border-dark-700 rounded-xl bg-dark-900/60">
-                  <table className="w-full text-left text-xs">
+                <div className="mt-2 overflow-x-auto border border-dark-700 rounded-xl bg-dark-900/60 w-full max-w-full touch-scroll-x table-responsive-container">
+                  <table className="w-full text-left text-xs min-w-[650px]">
                     <thead className="bg-dark-900 text-dark-400 text-[10px] uppercase font-semibold border-b border-dark-700">
                       <tr>
                         <th className="px-3 py-2">N° Resolución</th>

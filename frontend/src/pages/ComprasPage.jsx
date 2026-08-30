@@ -1275,7 +1275,7 @@ export default function ComprasPage() {
 
       {/* Tabla de Líneas de Compra */}
       {lineas.length > 0 ? (
-        <div className="card p-0 overflow-x-auto shadow-xl">
+        <div className="card p-0 shadow-xl w-full max-w-full overflow-hidden">
           <div className="px-4 py-2.5 border-b border-dark-700 flex flex-wrap justify-between items-center gap-3 bg-dark-900/70">
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-white font-bold text-sm">Artículos a Ingresar en Inventario</h2>
@@ -1340,8 +1340,9 @@ export default function ComprasPage() {
             <span className="text-dark-400 text-xs font-mono">{lineas.length} ítems en orden</span>
           </div>
 
-          <table className="w-full text-xs">
-            <thead className="border-b border-dark-700 bg-dark-900/40 text-dark-500 uppercase tracking-wider">
+          <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
+            <table className="w-full min-w-[850px] text-xs">
+              <thead className="border-b border-dark-700 bg-dark-900/40 text-dark-500 uppercase tracking-wider">
               <tr>
                 <th className="px-3 py-2.5 text-left w-20">Estado</th>
                 <th className="px-3 py-2.5 text-left">Producto / Códigos</th>
@@ -1553,6 +1554,7 @@ export default function ComprasPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div className="card text-center py-12 space-y-3 border-dashed border-dark-700">

@@ -407,11 +407,11 @@ export default function InventarioPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 w-full max-w-full touch-pan-x flex-nowrap sm:flex-wrap">
           {/* Botón Descargar Hoja de Toma Física */}
           <button
             onClick={handleDescargarTomaFisica}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-primary-500 hover:text-primary-400 transition-colors"
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-primary-500 hover:text-primary-400 transition-colors flex-shrink-0 whitespace-nowrap"
             title="Descarga el inventario actual en Excel con columnas para conteo físico"
           >
             <Download size={15} />
@@ -421,7 +421,7 @@ export default function InventarioPage() {
           {/* Botón Conciliar / Ajustar Inventario Físico */}
           <button
             onClick={() => { setResumenAjuste(null); setArchivoAjuste(null); setModalAjusteFisico(true) }}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-amber-500 hover:text-amber-400 transition-colors bg-amber-950/20 border-amber-800/40 text-amber-300"
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs hover:border-amber-500 hover:text-amber-400 transition-colors bg-amber-950/20 border-amber-800/40 text-amber-300 flex-shrink-0 whitespace-nowrap"
             title="Cargar archivo Excel con conteo físico para calcular desfase y actualizar stock"
           >
             <Scale size={15} />
@@ -431,7 +431,7 @@ export default function InventarioPage() {
           {/* Botón Importar Catálogo */}
           <button
             onClick={() => setModalImportar(true)}
-            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs"
+            className="btn-secondary flex items-center gap-1.5 py-2 px-3 text-xs flex-shrink-0 whitespace-nowrap"
           >
             <Upload size={15} />
             <span>Importar Catálogo</span>
@@ -440,7 +440,7 @@ export default function InventarioPage() {
           {/* Botón Nuevo Producto */}
           <button
             onClick={abrirCrear}
-            className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-xs font-bold shadow-md"
+            className="btn-primary flex items-center gap-1.5 py-2 px-3.5 text-xs font-bold shadow-md flex-shrink-0 whitespace-nowrap"
           >
             <Plus size={16} />
             <span>Nuevo Producto</span>
@@ -529,9 +529,9 @@ export default function InventarioPage() {
       </div>
 
       {/* ── Tabla de Productos ─────────────────────────────────────── */}
-      <div className="card p-0 overflow-hidden shadow-lg border border-dark-700">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+      <div className="card p-0 overflow-hidden shadow-lg border border-dark-700 w-full max-w-full">
+        <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
+          <table className="w-full min-w-[780px] text-sm">
             <thead className="border-b border-dark-700 bg-dark-800/90">
               <tr className="text-dark-400 text-left text-xs font-semibold uppercase tracking-wider">
                 <th className="px-4 py-3">Código</th>

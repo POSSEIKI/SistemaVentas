@@ -49,7 +49,7 @@ export default function ParametrosPage() {
       </div>
 
       {/* ── Pestañas de Navegación del Módulo ───────────────────── */}
-      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-dark-700 pb-1.5 overflow-x-auto no-scrollbar w-full max-w-full">
+      <div className="flex items-center gap-1.5 sm:gap-2 border-b border-dark-700 pb-1.5 overflow-x-auto no-scrollbar w-full max-w-full touch-scroll-x touch-pan-x flex-nowrap">
         {TABS.map(tab => {
           const Icon = tab.icon
           const activo = tabActiva === tab.id

@@ -309,8 +309,9 @@ export default function ParametrosProductos() {
           </button>
         </div>
       ) : (
-        <div className="card p-0 overflow-x-auto shadow-xl">
-          <table className="w-full text-xs">
+        <div className="card p-0 shadow-xl w-full max-w-full overflow-hidden">
+          <div className="overflow-x-auto w-full max-w-full touch-scroll-x table-responsive-container">
+            <table className="w-full min-w-[780px] text-xs">
             <thead className="border-b border-dark-700 bg-dark-900/40 text-dark-500 uppercase tracking-wider">
               <tr>
                 <th className="px-3 py-2.5 text-left">Código / Barras</th>
@@ -413,6 +414,7 @@ export default function ParametrosProductos() {
               })}
             </tbody>
           </table>
+          </div>
 
           {/* Paginación */}
           {totalPaginas > 1 && (
