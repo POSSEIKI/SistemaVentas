@@ -239,20 +239,24 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
 
         # 8.1 Crear Cliente Mostrador inicial para la nueva empresa
         from app.models.cliente import Cliente
-        res_max_cli = await db.execute(select(func.coalesce(func.max(Cliente.id), 0)))
-        next_cli_id = (res_max_cli.scalar() or 0) + 1
-        cliente_mostrador = Cliente(
-            id=next_cli_id,
-            empresa_id=empresa.id,
-            nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
-            nit='222222222222',
-            tipo_doc='CC',
-            direccion='Mostrador',
-            telefono='0000000',
-            email='',
-            activo=True
+        res_cli_exist = await db.execute(
+            select(Cliente).where(Cliente.empresa_id == empresa.id)
         )
-        db.add(cliente_mostrador)
+        if not res_cli_exist.scalars().first():
+            res_max_cli = await db.execute(select(func.coalesce(func.max(Cliente.id), 0)))
+            next_cli_id = (res_max_cli.scalar() or 0) + 1
+            cliente_mostrador = Cliente(
+                id=next_cli_id,
+                empresa_id=empresa.id,
+                nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
+                nit='222222222222',
+                tipo_doc='CC',
+                direccion='Mostrador',
+                telefono='0000000',
+                email='',
+                activo=True
+            )
+            db.add(cliente_mostrador)
 
         # 8.2 Sembrar categorías pertinentes al rubro de la nueva empresa
         from app.models.producto import Categoria
