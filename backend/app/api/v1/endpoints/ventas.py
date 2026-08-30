@@ -36,6 +36,26 @@ async def listar_clientes(
     current_user=Depends(get_current_user),
 ):
     empresa_id = current_user.empresa_id or 1
+
+    # Asegurar que siempre exista el Cliente Mostrador predeterminado por ley en Colombia para este negocio
+    res_cm = await db.execute(
+        select(Cliente).where(Cliente.empresa_id == empresa_id, Cliente.nit == "222222222222")
+    )
+    cm = res_cm.scalar_one_or_none()
+    if not cm:
+        cm = Cliente(
+            empresa_id=empresa_id,
+            nombre="CLIENTE MOSTRADOR (CONSUMIDOR FINAL)",
+            nit="222222222222",
+            tipo_doc="CC",
+            direccion="Mostrador",
+            telefono="0000000",
+            email="",
+            activo=True
+        )
+        db.add(cm)
+        await db.commit()
+
     query = select(Cliente).where(Cliente.empresa_id == empresa_id, Cliente.activo == True)
     if q:
         query = query.where(or_(
@@ -45,7 +65,7 @@ async def listar_clientes(
             Cliente.ciudad.ilike(f"%{q}%"),
             Cliente.direccion.ilike(f"%{q}%"),
         ))
-    result = await db.execute(query.order_by(Cliente.id.desc()).limit(100))
+    result = await db.execute(query.order_by(Cliente.id.asc()))
     return result.scalars().all()
 
 @router.get("/clientes/{cliente_id}", response_model=ClienteOut)
@@ -125,6 +145,12 @@ async def eliminar_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), 
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    if cliente.nit == "222222222222" or "MOSTRADOR" in (cliente.nombre or "").upper():
+        raise HTTPException(
+            status_code=400,
+            detail="El 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL - 222222222222)' es obligatorio por ley en Colombia para la emisión de facturas y no puede ser eliminado."
+        )
 
     cliente.activo = False
     await db.commit()

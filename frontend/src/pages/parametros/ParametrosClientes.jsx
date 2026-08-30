@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { clientesApi } from '../../api/services'
 import {
   Search, Plus, Users, Phone, Mail, MapPin, Edit,
@@ -92,9 +92,9 @@ export default function ParametrosClientes() {
     }
   }
 
-  const eliminar = async (id, nombre) => {
-    if (id === 1) {
-      toast.error('No se puede desactivar el Cliente Mostrador por defecto')
+  const eliminar = async (id, nombre, nit) => {
+    if (id === 1 || nit === '222222222222' || nombre?.toUpperCase().includes('MOSTRADOR')) {
+      toast.error('El "CLIENTE MOSTRADOR (CONSUMIDOR FINAL - 222222222222)" es obligatorio por ley en Colombia y no se puede eliminar.')
       return
     }
     if (!window.confirm(`¿Estás seguro de desactivar al cliente "${nombre}"?`)) return
@@ -187,7 +187,7 @@ export default function ParametrosClientes() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {clientes.map(c => {
-            const esMostrador = c.id === 1 || c.nit === '222222222222'
+            const esMostrador = c.id === 1 || c.nit === '222222222222' || c.nombre?.toUpperCase().includes('MOSTRADOR')
             const waNumber = formatWhatsApp(c.telefono)
 
             return (
@@ -207,7 +207,7 @@ export default function ParametrosClientes() {
                     </span>
                     {esMostrador && (
                       <span className="text-[10px] bg-primary-900/60 text-primary-300 font-bold px-2 py-0.5 rounded-full border border-primary-700">
-                        ⚡ Venta Rápida
+                        ⚡ Venta Rápida / Obligatorio DIAN
                       </span>
                     )}
                   </div>
@@ -274,7 +274,7 @@ export default function ParametrosClientes() {
                   </button>
                   {!esMostrador && (
                     <button
-                      onClick={() => eliminar(c.id, c.nombre)}
+                      onClick={() => eliminar(c.id, c.nombre, c.nit)}
                       className="p-1.5 rounded-lg text-dark-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
                       title="Desactivar cliente"
                     >
