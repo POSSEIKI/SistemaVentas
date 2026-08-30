@@ -383,6 +383,8 @@ async def verificar_bono_codigo(codigo: str, db: AsyncSession) -> Dict[str, Any]
         "monto_inicial": float(b.monto_inicial),
         "saldo_disponible": float(b.saldo_disponible),
         "estado": b.estado,
+    }
+
 async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession, empresa_id: int = 1) -> Compra:
     # 0. Validar si ya existe una factura de compra con el mismo número del mismo proveedor en esta empresa
     if datos.numero_factura_proveedor and datos.numero_factura_proveedor.strip():
