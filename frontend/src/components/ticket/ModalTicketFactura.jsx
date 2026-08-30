@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import {
   Printer, Mail, MessageSquare, X, Check,
   FileText, Copy, Download, Image as ImageIcon, Send,
-  Zap, QrCode, ShieldCheck, ExternalLink, RefreshCw
+  Zap, QrCode, ShieldCheck, ExternalLink, RefreshCw,
+  Truck, MapPin, Navigation
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatCOP } from '../../utils/pricing'
@@ -21,6 +22,9 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
   // Modales secundarios
   const [whatsappModal, setWhatsappModal] = useState(false)
   const [telefonoWhatsapp, setTelefonoWhatsapp] = useState(factura?.cliente?.telefono || '')
+
+  const [repartidorModal, setRepartidorModal] = useState(false)
+  const [telefonoRepartidor, setTelefonoRepartidor] = useState('')
   
   const [emailModal, setEmailModal] = useState(false)
   const [emailDestino, setEmailDestino] = useState(factura?.cliente?.email || '')
@@ -95,6 +99,54 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
     if (empresa?.mensaje_factura) t += `_${empresa.mensaje_factura}_\n`
     if (empresa?.resolucion_dian) t += `_${empresa.resolucion_dian}_\n`
     return t
+  }
+
+  // ─── Generación de Guía de Despacho Domicilio con Google Maps ──────────────
+  const generarTextoDespachoDomicilio = () => {
+    const dirEntrega = facturaActual?.domicilio_direccion || cliente?.direccion || 'Dirección de mostrador'
+    const telCliente = facturaActual?.domicilio_telefono || cliente?.telefono || 'Sin teléfono'
+    const notasEntrega = facturaActual?.domicilio_notas || ''
+    const ciudad = empresa?.ciudad || 'Colombia'
+    const mapsQuery = encodeURIComponent(`${dirEntrega}, ${ciudad}, Colombia`)
+
+    let t = `🛵 *GUÍA DE DESPACHO A DOMICILIO*\n`
+    t += `🏪 *Establecimiento:* ${empresa?.nombre || 'FACTUR-AAP'}\n`
+    t += `📄 *Factura:* ${facturaActual.numero}\n`
+    t += `----------------------------------------\n`
+    t += `👤 *Cliente:* ${cliente?.nombre || 'Consumidor Final'}\n`
+    t += `📞 *Teléfono Cliente:* ${telCliente}\n`
+    t += `📍 *Dirección de Entrega:* ${dirEntrega}\n`
+    if (notasEntrega) t += `📝 *Indicaciones:* ${notasEntrega}\n`
+    t += `🗺️ *Navegar en Google Maps:* https://www.google.com/maps/search/?api=1&query=${mapsQuery}\n`
+    t += `----------------------------------------\n`
+    t += `*PRODUCTOS A ENTREGAR:*\n`
+    ;(lineas || []).forEach(l => {
+      const pres = l.presentacion && l.presentacion !== 'DIRECTO' ? ` (${l.presentacion})` : ''
+      t += `• ${l.cantidad}x ${l.nombre}${pres}\n`
+    })
+    t += `----------------------------------------\n`
+    t += `💰 *TOTAL A COBRAR:* ${formatCOP(facturaActual.total)}\n`
+    t += `💳 *Forma de Pago:* ${facturaActual.forma_pago}\n`
+    if (facturaActual.forma_pago === 'EFECTIVO' && facturaActual.valor_recibido > facturaActual.total) {
+      t += `💵 *Cliente paga con:* ${formatCOP(facturaActual.valor_recibido)} (Llevar cambio de ${formatCOP(facturaActual.cambio)})\n`
+    }
+    t += `----------------------------------------\n`
+    t += `¡Conduce con precaución! 🛵💨`
+    return t
+  }
+
+  const handleEnviarRepartidorWhatsapp = (e) => {
+    e?.preventDefault()
+    const telLimpio = (telefonoRepartidor || '').replace(/\D/g, '')
+    const texto = encodeURIComponent(generarTextoDespachoDomicilio())
+    if (telLimpio && telLimpio.length >= 7) {
+      const telInternacional = telLimpio.length === 10 ? `57${telLimpio}` : telLimpio
+      window.open(`https://wa.me/${telInternacional}?text=${texto}`, '_blank')
+    } else {
+      window.open(`https://wa.me/?text=${texto}`, '_blank')
+    }
+    toast.success('🛵 Guía de despacho enviada a WhatsApp con enlace GPS')
+    setRepartidorModal(false)
   }
 
   // ─── 1. IMPRIMIR TICKET (Acción Principal Predeterminada) ───────────────────
@@ -376,6 +428,15 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                     <p className="text-gray-600">C.C. / NIT: <strong className="text-gray-800">{cliente?.nit || '222222222222'}</strong></p>
                     {cliente?.telefono && <p className="text-gray-600">Tel: {cliente.telefono}</p>}
                     {cliente?.direccion && <p className="text-gray-600">Dir: {cliente.direccion} ({cliente.ciudad || ''})</p>}
+                    {(facturaActual?.domicilio_direccion || facturaActual?.domicilio_valor > 0) && (
+                      <div className="mt-2 p-2 bg-emerald-50 border border-emerald-300 rounded text-emerald-950">
+                        <p className="font-bold flex items-center gap-1 text-[11px]">🛵 Entrega a Domicilio:</p>
+                        {facturaActual.domicilio_direccion && <p><strong>Dirección:</strong> {facturaActual.domicilio_direccion}</p>}
+                        {facturaActual.domicilio_telefono && <p><strong>Tel. Contacto:</strong> {facturaActual.domicilio_telefono}</p>}
+                        {facturaActual.domicilio_notas && <p><strong>Indicaciones:</strong> {facturaActual.domicilio_notas}</p>}
+                        {facturaActual.domicilio_distancia_km && <p><strong>Distancia aprox:</strong> {facturaActual.domicilio_distancia_km} km</p>}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] text-gray-500 font-bold uppercase block">Detalles de Venta:</span>
@@ -540,6 +601,14 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                       <span>{cajero.nombre}</span>
                     </div>
                   )}
+                  {(facturaActual?.domicilio_direccion || facturaActual?.domicilio_valor > 0) && (
+                    <div className="bg-gray-100 p-1.5 rounded my-1 text-[9px] border border-gray-300 space-y-0.5">
+                      <p className="font-bold flex items-center gap-1 text-black">🛵 DOMICILIO / ENTREGA:</p>
+                      {facturaActual.domicilio_direccion && <p className="font-semibold text-black">📍 {facturaActual.domicilio_direccion}</p>}
+                      {facturaActual.domicilio_telefono && <p>📞 Tel: {facturaActual.domicilio_telefono}</p>}
+                      {facturaActual.domicilio_notas && <p className="italic text-gray-700">📝 {facturaActual.domicilio_notas}</p>}
+                    </div>
+                  )}
                 </div>
 
                 {/* Tabla de Productos Térmica */}
@@ -674,11 +743,24 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
               onClick={handleAbrirModalWhatsapp}
               disabled={enviandoWhatsapp}
               className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950/40 transition-all disabled:opacity-50"
-              title="2. Enviar comprobante PDF por WhatsApp"
+              title="2. Enviar comprobante PDF por WhatsApp al cliente"
             >
               <MessageSquare size={15} />
               <span>{enviandoWhatsapp ? 'Generando PDF...' : '📱 WhatsApp'}</span>
             </button>
+
+            {/* 2.1 DESPACHO DOMICILIO - Enviar Guía a Repartidor con Google Maps */}
+            {(facturaActual?.domicilio_direccion || facturaActual?.domicilio_valor > 0) && (
+              <button
+                type="button"
+                onClick={() => setRepartidorModal(true)}
+                className="py-2.5 px-3.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-teal-950/40 transition-all"
+                title="Enviar guía de despacho a WhatsApp del repartidor con enlace de Google Maps"
+              >
+                <Truck size={15} />
+                <span>🛵 Repartidor</span>
+              </button>
+            )}
 
             {/* 3. CORREO - Factura PDF al correo del cliente */}
             <button
@@ -879,6 +961,75 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
                   >
                     <Send size={14} />
                     <span>{guardandoEmail ? 'Procesando...' : 'Enviar Correo con PDF'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── Submodal: Despacho a Repartidor por WhatsApp con Enlace GPS ─ */}
+        {repartidorModal && (
+          <div className="fixed inset-0 bg-black/85 z-[100] flex items-center justify-center p-4">
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-dark-700 pb-2.5">
+                <h4 className="text-white font-bold text-sm flex items-center gap-2">
+                  <Truck size={17} className="text-teal-400" />
+                  Guía de Despacho para Repartidor
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setRepartidorModal(false)}
+                  className="text-dark-400 hover:text-white p-1"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+
+              <form onSubmit={handleEnviarRepartidorWhatsapp} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block text-dark-300 mb-1 font-semibold uppercase tracking-wide">
+                    Número de WhatsApp del Repartidor (Opcional):
+                  </label>
+                  <input
+                    type="tel"
+                    autoFocus
+                    className="input-field py-2.5 font-mono text-sm w-full"
+                    placeholder="Ej: 3101234567 (o dejar vacío para elegir contacto)"
+                    value={telefonoRepartidor}
+                    onChange={e => setTelefonoRepartidor(e.target.value)}
+                  />
+                  <div className="mt-2.5 bg-dark-900/60 p-2.5 rounded-xl border border-dark-700 text-[11px] text-dark-300 space-y-1.5">
+                    <p className="font-bold text-teal-300 flex items-center gap-1">
+                      <span>📍 Destino:</span>
+                      <span className="text-white font-normal">{facturaActual?.domicilio_direccion || cliente?.direccion || 'Mostrador'}</span>
+                    </p>
+                    {facturaActual?.domicilio_notas && (
+                      <p className="text-dark-400 italic">📝 {facturaActual.domicilio_notas}</p>
+                    )}
+                    <p className="text-emerald-400 font-bold">
+                      💰 Cobrar al cliente: {formatCOP(facturaActual?.total)} ({facturaActual?.forma_pago})
+                    </p>
+                    <p className="text-[10px] text-dark-400 pt-1 border-t border-dark-700">
+                      Incluye automáticamente el <strong>enlace de navegación de Google Maps</strong> directo a la puerta del cliente.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-dark-700">
+                  <button
+                    type="button"
+                    onClick={() => setRepartidorModal(false)}
+                    className="btn-secondary flex-1 py-2.5 text-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary flex-1 py-2.5 text-xs font-bold bg-teal-600 hover:bg-teal-500 border-teal-500 shadow-md flex items-center justify-center gap-1.5"
+                  >
+                    <Send size={14} />
+                    <span>Enviar a Repartidor</span>
                   </button>
                 </div>
               </form>

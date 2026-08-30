@@ -1067,12 +1067,12 @@ export default function ParametrosEmpresa() {
       <div className="card space-y-3">
         <h3 className="text-white font-semibold text-sm flex items-center gap-2">
           <Truck size={16} className="text-primary-400" />
-          Tarifas de Domicilio por Zonas ($)
+          Tarifas y Parámetros de Domicilio
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs text-dark-400 mb-1">Zona Corta ($)</label>
+            <label className="block text-xs text-dark-400 mb-1">Zona Corta (&le;3 km) ($)</label>
             <input
               type="number"
               className="input-field py-1.5 text-xs font-mono"
@@ -1082,7 +1082,7 @@ export default function ParametrosEmpresa() {
           </div>
 
           <div>
-            <label className="block text-xs text-dark-400 mb-1">Zona Media ($)</label>
+            <label className="block text-xs text-dark-400 mb-1">Zona Media (3-6 km) ($)</label>
             <input
               type="number"
               className="input-field py-1.5 text-xs font-mono"
@@ -1092,12 +1092,42 @@ export default function ParametrosEmpresa() {
           </div>
 
           <div>
-            <label className="block text-xs text-dark-400 mb-1">Zona Larga ($)</label>
+            <label className="block text-xs text-dark-400 mb-1">Zona Larga (&gt;6 km) ($)</label>
             <input
               type="number"
               className="input-field py-1.5 text-xs font-mono"
               value={form.domicilio_larga || 0}
               onChange={e => set('domicilio_larga', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-dark-400 mb-1">Tarifa Base Sugerida ($)</label>
+            <input
+              type="number"
+              className="input-field py-1.5 text-xs font-mono"
+              value={form.domicilio_tarifa_base || 0}
+              onChange={e => set('domicilio_tarifa_base', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-dark-400 mb-1">Costo por KM extra ($)</label>
+            <input
+              type="number"
+              className="input-field py-1.5 text-xs font-mono"
+              value={form.domicilio_costo_por_km || 0}
+              onChange={e => set('domicilio_costo_por_km', parseFloat(e.target.value) || 0)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-dark-400 mb-1">Envío Gratis desde ($) <span className="text-dark-500">(0 = inactivo)</span></label>
+            <input
+              type="number"
+              className="input-field py-1.5 text-xs font-mono"
+              value={form.domicilio_gratis_desde || 0}
+              onChange={e => set('domicilio_gratis_desde', parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>

@@ -9,9 +9,10 @@ from app.models.configuracion import ConfiguracionEmpresa
 from app.schemas.ventas import (
     ClienteCreate, ClienteUpdate, ClienteOut,
     FacturaCreate, FacturaOut, AnularFacturaRequest,
-    DevolucionFacturaRequest, BonoClienteOut
+    DevolucionFacturaRequest, BonoClienteOut,
+    CalculoDomicilioRequest, CalculoDomicilioResponse
 )
-from app.services import venta_service
+from app.services import venta_service, domicilio_service
 from typing import List, Optional
 from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo
@@ -220,6 +221,10 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
         "descuento_valor": float(f.descuento_valor or 0),
         "iva_valor": float(f.iva_valor or 0),
         "domicilio_valor": float(f.domicilio_valor or 0),
+        "domicilio_direccion": getattr(f, "domicilio_direccion", None),
+        "domicilio_telefono": getattr(f, "domicilio_telefono", None),
+        "domicilio_notas": getattr(f, "domicilio_notas", None),
+        "domicilio_distancia_km": float(f.domicilio_distancia_km) if getattr(f, "domicilio_distancia_km", None) is not None else None,
         "total": float(f.total or 0),
         "forma_pago": f.forma_pago,
         "valor_recibido": float(f.valor_recibido or 0),
@@ -291,6 +296,25 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
             for l in (f.lineas or [])
         ]
     }
+
+# ─── Domicilios ───────────────────────────────────────────────────────────────
+
+@router.post("/domicilios/calcular-tarifa", response_model=CalculoDomicilioResponse)
+async def calcular_tarifa_domicilio_endpoint(
+    datos: CalculoDomicilioRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    empresa_id = current_user.empresa_id or 1
+    resultado = await domicilio_service.calcular_tarifa_domicilio(
+        db=db,
+        empresa_id=empresa_id,
+        direccion_destino=datos.direccion_destino,
+        ciudad_destino=datos.ciudad_destino,
+        direccion_origen=datos.direccion_origen,
+        subtotal_venta=datos.subtotal_venta,
+    )
+    return resultado
 
 # ─── Facturas ─────────────────────────────────────────────────────────────────
 

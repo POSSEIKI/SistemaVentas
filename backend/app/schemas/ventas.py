@@ -153,6 +153,11 @@ class FacturaCreate(BaseModel):
     forma_pago: str  # EFECTIVO|TARJETA|CREDITO|CONTRAENTREGA|BONO
     valor_recibido: Decimal = Decimal("0")
     domicilio_valor: Decimal = Decimal("0")
+    domicilio_direccion: Optional[str] = None
+    domicilio_telefono: Optional[str] = None
+    domicilio_notas: Optional[str] = None
+    domicilio_distancia_km: Optional[Decimal] = None
+    guardar_direccion_cliente: Optional[bool] = False
     observaciones: Optional[str] = None
     bono_codigo: Optional[str] = None
     bono_monto_aplicado: Optional[Decimal] = Decimal("0")
@@ -184,6 +189,10 @@ class FacturaOut(BaseModel):
     descuento_valor: Decimal
     iva_valor: Decimal
     domicilio_valor: Decimal
+    domicilio_direccion: Optional[str] = None
+    domicilio_telefono: Optional[str] = None
+    domicilio_notas: Optional[str] = None
+    domicilio_distancia_km: Optional[Decimal] = None
     total: Decimal
     forma_pago: str
     valor_recibido: Decimal
@@ -192,6 +201,22 @@ class FacturaOut(BaseModel):
     observaciones: Optional[str] = None
     lineas: List[LineaFacturaOut] = []
     model_config = {"from_attributes": True}
+
+class CalculoDomicilioRequest(BaseModel):
+    direccion_destino: str
+    ciudad_destino: Optional[str] = None
+    direccion_origen: Optional[str] = None
+    subtotal_venta: Optional[Decimal] = Decimal("0")
+
+class CalculoDomicilioResponse(BaseModel):
+    exito: bool
+    tarifa_sugerida: Decimal
+    distancia_km: Optional[Decimal] = None
+    zona_sugerida: str  # CORTA | MEDIA | LARGA | FIJA
+    direccion_origen: str
+    direccion_destino: str
+    tiempo_estimado_minutos: Optional[int] = None
+    mensaje: str
 
 class AnularFacturaRequest(BaseModel):
     motivo: str

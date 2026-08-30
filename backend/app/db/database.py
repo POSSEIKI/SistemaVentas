@@ -83,6 +83,10 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_rango_id VARCHAR(50) DEFAULT '';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_tipo_documento VARCHAR(50) DEFAULT 'POS_ELECTRONICO';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS fe_municipio_id VARCHAR(20) DEFAULT '980';"))
+                # Columnas de Domicilios y Tarifas en configuracion_empresa
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS domicilio_tarifa_base NUMERIC(10, 2) DEFAULT 4000;"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS domicilio_costo_por_km NUMERIC(10, 2) DEFAULT 1500;"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS domicilio_gratis_desde NUMERIC(12, 2) DEFAULT 0;"))
                 # Columnas en facturas para CUFE y QR
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS cufe VARCHAR(255);"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS qr_cadena TEXT;"))
@@ -93,6 +97,11 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_errores TEXT;"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS dian_numero_oficial VARCHAR(50);"))
                 await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS resolucion_id INTEGER REFERENCES resoluciones_dian(id) ON DELETE SET NULL;"))
+                # Columnas de entrega a domicilio en facturas
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_direccion VARCHAR(300);"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_telefono VARCHAR(50);"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_notas TEXT;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS domicilio_distancia_km NUMERIC(6, 2);"))
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:

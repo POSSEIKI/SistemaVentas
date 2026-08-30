@@ -27,6 +27,7 @@ export default function VentasPage() {
   const [rubro, setRubro] = useState('FARMACIA')
   const [modoBusqueda, setModoBusqueda] = useState('NOMBRE')
   const [modoRedondeo, setModoRedondeo] = useState('CENTENA_100')
+  const [empresaConfig, setEmpresaConfig] = useState(null)
   const inputBusquedaRef = useRef(null)
 
   // Modales
@@ -41,6 +42,39 @@ export default function VentasPage() {
   const [busqCliente, setBusqCliente] = useState('')
   const [clientes, setClientes] = useState([])
   const [bonosCliente, setBonosCliente] = useState([])
+
+  // Domicilios
+  const [calculandoTarifa, setCalculandoTarifa] = useState(false)
+  const [infoCalculoDomicilio, setInfoCalculoDomicilio] = useState(null)
+
+  const handleCalcularTarifaDomicilio = async () => {
+    const dir = store.domicilioDireccion?.trim()
+    if (!dir) {
+      toast.error('Ingresa la dirección de entrega del cliente para calcular la tarifa')
+      return
+    }
+    setCalculandoTarifa(true)
+    setInfoCalculoDomicilio(null)
+    try {
+      const res = await facturasApi.calcularDomicilio({
+        direccion_destino: dir,
+        ciudad_destino: empresaConfig?.ciudad || 'Colombia',
+        subtotal_venta: store.getSubtotal()
+      })
+      if (res && res.tarifa_sugerida !== undefined) {
+        store.setDomicilio(res.tarifa_sugerida)
+        if (res.distancia_km !== undefined && res.distancia_km !== null) {
+          store.setDomicilioDatos({ domicilioDistanciaKm: res.distancia_km })
+        }
+        setInfoCalculoDomicilio(res)
+        toast.success(`🛵 ${res.mensaje}`)
+      }
+    } catch {
+      toast.error('No se pudo calcular la ruta exacta. Puedes fijar la tarifa manualmente o elegir una zona.')
+    } finally {
+      setCalculandoTarifa(false)
+    }
+  }
 
   // Atajos de Teclado Globales (F2: Buscar, F4: Cobrar, Esc: Limpiar)
   useEffect(() => {
@@ -69,6 +103,7 @@ export default function VentasPage() {
   useEffect(() => {
     configApi.get().then(cfg => {
       if (cfg) {
+        setEmpresaConfig(cfg)
         if (cfg.rubro) setRubro(cfg.rubro)
         if (cfg.modo_redondeo) setModoRedondeo(cfg.modo_redondeo)
       }
@@ -326,7 +361,7 @@ export default function VentasPage() {
     try {
       const nuevo = await clientesApi.crear(formNuevoCliente)
       toast.success(`Cliente "${nuevo.nombre}" creado y asignado`)
-      store.setCliente(nuevo.id, nuevo.nombre)
+      store.setCliente(nuevo.id, nuevo.nombre, nuevo.direccion || '', nuevo.telefono || '')
       setModalCliente(false)
       setVistaModalCliente('BUSCAR')
       setFormNuevoCliente({ tipo_doc: 'CC', nit: '', nombre: '', telefono: '', direccion: '', ciudad: '', email: '' })
@@ -370,6 +405,153 @@ export default function VentasPage() {
   const iva = store.getIvaTotal()
   const total = store.getTotal()
   const cambio = store.getCambio()
+
+  const renderBloqueDomicilio = () => (
+    <div className="bg-dark-900/70 rounded-xl border border-dark-700 p-3 space-y-2.5 transition-all">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${store.esDomicilio ? 'bg-primary-600 text-white shadow-sm' : 'bg-dark-800 text-dark-400'}`}>
+            <Truck size={15} />
+          </div>
+          <div>
+            <span className="text-xs font-bold text-white block">¿Lleva Domicilio?</span>
+            <span className="text-[10px] text-dark-400">Recargo de transporte</span>
+          </div>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={store.esDomicilio}
+            onChange={e => {
+              const val = e.target.checked
+              store.setEsDomicilio(val)
+              if (val && store.clienteDireccion && !store.domicilioDireccion) {
+                store.setDomicilioDatos({
+                  domicilioDireccion: store.clienteDireccion,
+                  domicilioTelefono: store.clienteTelefono
+                })
+              }
+            }}
+            className="sr-only peer"
+          />
+          <div className="w-9 h-5 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-dark-600 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-600"></div>
+        </label>
+      </div>
+
+      {store.esDomicilio && (
+        <div className="space-y-2.5 pt-2 border-t border-dark-700/60 animate-in fade-in slide-in-from-top-1 text-xs">
+          {/* Dirección de entrega */}
+          <div>
+            <label className="block text-[11px] text-dark-400 font-semibold mb-1">
+              Dirección de Entrega <span className="text-primary-400">*</span>
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                className="input-field py-1.5 px-2.5 text-xs flex-1"
+                placeholder="Ej: Calle 45 # 12-34 (Apto 302)"
+                value={store.domicilioDireccion || ''}
+                onChange={e => store.setDomicilioDatos({ domicilioDireccion: e.target.value })}
+              />
+              <button
+                type="button"
+                onClick={handleCalcularTarifaDomicilio}
+                disabled={calculandoTarifa || !store.domicilioDireccion?.trim()}
+                className="btn-secondary py-1.5 px-2.5 text-[11px] flex items-center gap-1 font-bold whitespace-nowrap"
+                title="Calcular distancia y costo automáticamente"
+              >
+                {calculandoTarifa ? '...' : '📍 Tarifa'}
+              </button>
+            </div>
+          </div>
+
+          {/* Teléfono & Valor */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div>
+              <label className="block text-[10px] text-dark-400 font-semibold mb-0.5">Teléfono Reparto</label>
+              <input
+                type="text"
+                className="input-field py-1 px-2 text-xs"
+                placeholder="3101234567"
+                value={store.domicilioTelefono || ''}
+                onChange={e => store.setDomicilioDatos({ domicilioTelefono: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] text-dark-400 font-semibold mb-0.5">Tarifa Domicilio ($)</label>
+              <input
+                type="number"
+                className="input-field py-1 px-2 text-xs font-mono font-bold text-white text-right"
+                value={store.domicilioValor || ''}
+                onChange={e => store.setDomicilio(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          {/* Indicaciones / Notas */}
+          <div>
+            <input
+              type="text"
+              className="input-field py-1 px-2 text-[11px]"
+              placeholder="Indicaciones (ej: Timbre blanco, torre 2)"
+              value={store.domicilioNotas || ''}
+              onChange={e => store.setDomicilioDatos({ domicilioNotas: e.target.value })}
+            />
+          </div>
+
+          {/* Presets de Zona */}
+          <div className="flex items-center justify-between gap-1 pt-0.5">
+            <span className="text-[10px] text-dark-500 font-semibold">Zonas:</span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => store.setDomicilio(empresaConfig?.domicilio_corta || 3000)}
+                className="text-[10px] bg-dark-800 hover:bg-dark-700 text-dark-300 px-2 py-0.5 rounded border border-dark-700 font-mono"
+              >
+                Corta ${empresaConfig?.domicilio_corta || 3000}
+              </button>
+              <button
+                type="button"
+                onClick={() => store.setDomicilio(empresaConfig?.domicilio_media || 5000)}
+                className="text-[10px] bg-dark-800 hover:bg-dark-700 text-dark-300 px-2 py-0.5 rounded border border-dark-700 font-mono"
+              >
+                Media ${empresaConfig?.domicilio_media || 5000}
+              </button>
+              <button
+                type="button"
+                onClick={() => store.setDomicilio(empresaConfig?.domicilio_larga || 8000)}
+                className="text-[10px] bg-dark-800 hover:bg-dark-700 text-dark-300 px-2 py-0.5 rounded border border-dark-700 font-mono"
+              >
+                Larga ${empresaConfig?.domicilio_larga || 8000}
+              </button>
+            </div>
+          </div>
+
+          {/* Mensaje de cálculo */}
+          {infoCalculoDomicilio && (
+            <div className="bg-primary-950/40 border border-primary-800/50 p-1.5 rounded-lg text-[10px] text-primary-300 flex items-center gap-1.5">
+              <span>🛵</span>
+              <span className="leading-tight">{infoCalculoDomicilio.mensaje}</span>
+            </div>
+          )}
+
+          {/* Guardar en cliente */}
+          {store.clienteId && store.clienteId !== 1 && (
+            <label className="flex items-center gap-1.5 text-[11px] text-dark-400 cursor-pointer pt-0.5">
+              <input
+                type="checkbox"
+                checked={store.guardarDireccionCliente}
+                onChange={e => store.setDomicilioDatos({ guardarDireccionCliente: e.target.checked })}
+                className="rounded bg-dark-800 border-dark-700 text-primary-500 focus:ring-0"
+              />
+              <span>Guardar esta dirección en ficha del cliente</span>
+            </label>
+          )}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className="h-full flex flex-col md:flex-row gap-0 overflow-hidden relative">
@@ -670,6 +852,9 @@ export default function VentasPage() {
             ))}
           </div>
         )}
+
+        {/* Módulo de Domicilio */}
+        {renderBloqueDomicilio()}
 
         {/* Forma de pago */}
         <div>
@@ -1038,7 +1223,7 @@ export default function VentasPage() {
             <div className="p-4 bg-dark-900/60 border-b border-dark-700">
               <button
                 onClick={() => {
-                  store.setCliente(1, 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)')
+                  store.setCliente(1, 'CLIENTE MOSTRADOR (CONSUMIDOR FINAL)', '', '')
                   setModalCliente(false)
                 }}
                 className="w-full flex items-center justify-between p-3 bg-primary-950/40 hover:bg-primary-900/50 border border-primary-600/50 hover:border-primary-500 rounded-xl transition-all"
@@ -1102,7 +1287,7 @@ export default function VentasPage() {
                       <button
                         key={c.id}
                         onClick={() => {
-                          store.setCliente(c.id, c.nombre)
+                          store.setCliente(c.id, c.nombre, c.direccion || '', c.telefono || '')
                           setModalCliente(false)
                         }}
                         className="w-full flex items-center justify-between p-3 hover:bg-dark-700 text-left transition-colors rounded-lg"
@@ -1306,6 +1491,9 @@ export default function VentasPage() {
                   <span className="text-xs text-white font-semibold truncate">{store.clienteNombre || 'CLIENTE MOSTRADOR'}</span>
                 </div>
               </div>
+
+              {/* Domicilio Móvil */}
+              {renderBloqueDomicilio()}
 
               {/* Forma de Pago */}
               <div>

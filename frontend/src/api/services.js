@@ -50,6 +50,11 @@ export const facturasApi = {
   devolucion: (id, datos) => api.post(`/facturas/${id}/devolucion`, datos).then(r => r.data),
   resumenDia: (fecha) => api.get('/reportes/resumen-dia', { params: fecha ? { fecha } : {} }).then(r => r.data),
   emitirDian: (id) => api.post(`/facturas/${id}/emitir-dian`).then(r => r.data),
+  calcularDomicilio: (datos) => api.post('/domicilios/calcular-tarifa', datos).then(r => r.data),
+}
+
+export const domiciliosApi = {
+  calcularTarifa: (datos) => api.post('/domicilios/calcular-tarifa', datos).then(r => r.data),
 }
 
 export const bonosApi = {

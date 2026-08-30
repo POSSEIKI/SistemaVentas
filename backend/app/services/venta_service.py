@@ -142,7 +142,17 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
         if bono.saldo_disponible <= Decimal("0"):
             bono.estado = "REDIMIDO"
 
-    cambio = max(Decimal("0"), datos.valor_recibido - total)
+    # Si se solicitó guardar/actualizar la dirección del cliente y no es Mostrador genérico
+    if datos.guardar_direccion_cliente and datos.cliente_id and datos.cliente_id > 0:
+        res_cli = await db.execute(
+            select(Cliente).where(Cliente.id == datos.cliente_id, Cliente.empresa_id == empresa_id)
+        )
+        cli = res_cli.scalar_one_or_none()
+        if cli and cli.nit != "222222222222":
+            if datos.domicilio_direccion:
+                cli.direccion = datos.domicilio_direccion.strip()
+            if datos.domicilio_telefono:
+                cli.telefono = datos.domicilio_telefono.strip()
 
     factura = Factura(
         empresa_id=empresa_id,
@@ -154,6 +164,10 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
         descuento_valor=descuento_total,
         iva_valor=iva_total,
         domicilio_valor=datos.domicilio_valor,
+        domicilio_direccion=datos.domicilio_direccion,
+        domicilio_telefono=datos.domicilio_telefono,
+        domicilio_notas=datos.domicilio_notas,
+        domicilio_distancia_km=datos.domicilio_distancia_km,
         total=total,
         forma_pago=datos.forma_pago,
         valor_recibido=datos.valor_recibido,
