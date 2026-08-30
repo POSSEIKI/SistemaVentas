@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from app.models.suscripcion import PlanSuscripcion, Empresa, Suscripcion
 from app.models.usuario import Rol, Usuario
