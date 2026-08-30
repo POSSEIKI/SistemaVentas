@@ -155,142 +155,165 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
         res_plan = await db.execute(select(PlanSuscripcion).where(PlanSuscripcion.codigo == "PRO"))
         plan = res_plan.scalars().first()
 
-    # 4. Crear Empresa
-    slug = _crear_slug(datos.empresa_nombre)
-    empresa = Empresa(
-        nombre=datos.empresa_nombre.strip(),
-        nit=datos.empresa_nit.strip() if datos.empresa_nit else "",
-        rubro=datos.rubro.strip().upper(),
-        slug=slug,
-        email=email_clean or "",
-        telefono=datos.empresa_telefono.strip() if datos.empresa_telefono else "",
-        direccion=datos.empresa_direccion.strip() if datos.empresa_direccion else "",
-        ciudad=datos.empresa_ciudad.strip() if datos.empresa_ciudad else "",
-    )
-    db.add(empresa)
-    await db.flush()
-
-    # 5. Asegurar Rol Administrador
-    res_rol = await db.execute(select(Rol).where(Rol.nombre == "ADMINISTRADOR"))
-    rol_admin = res_rol.scalars().first()
-    if not rol_admin:
-        permisos_admin = json.dumps({"administrador_total": True})
-        rol_admin = Rol(nombre="ADMINISTRADOR", descripcion="Acceso total al sistema", permisos=permisos_admin)
-        db.add(rol_admin)
+    try:
+        # 4. Crear Empresa
+        slug = _crear_slug(datos.empresa_nombre)
+        res_max_emp = await db.execute(select(func.coalesce(func.max(Empresa.id), 0)))
+        next_emp_id = (res_max_emp.scalar() or 0) + 1
+        empresa = Empresa(
+            id=next_emp_id,
+            nombre=datos.empresa_nombre.strip(),
+            nit=datos.empresa_nit.strip() if datos.empresa_nit else "",
+            rubro=datos.rubro.strip().upper(),
+            slug=slug,
+            email=email_clean or "",
+            telefono=datos.empresa_telefono.strip() if datos.empresa_telefono else "",
+            direccion=datos.empresa_direccion.strip() if datos.empresa_direccion else "",
+            ciudad=datos.empresa_ciudad.strip() if datos.empresa_ciudad else "",
+        )
+        db.add(empresa)
         await db.flush()
 
-    # 6. Crear Usuario Administrador con Email
-    admin = Usuario(
-        nombre=datos.admin_nombre.strip(),
-        username=username_clean,
-        email=email_clean,
-        codigo_hash=hash_password(datos.admin_codigo),
-        rol_id=rol_admin.id,
-        empresa_id=empresa.id,
-        activo=True,
-    )
-    db.add(admin)
-    await db.flush()
+        # 5. Asegurar Rol Administrador
+        res_rol = await db.execute(select(Rol).where(Rol.nombre == "ADMINISTRADOR"))
+        rol_admin = res_rol.scalars().first()
+        if not rol_admin:
+            res_max_rol = await db.execute(select(func.coalesce(func.max(Rol.id), 0)))
+            next_rol_id = (res_max_rol.scalar() or 0) + 1
+            permisos_admin = json.dumps({"administrador_total": True})
+            rol_admin = Rol(id=next_rol_id, nombre="ADMINISTRADOR", descripcion="Acceso total al sistema", permisos=permisos_admin)
+            db.add(rol_admin)
+            await db.flush()
 
-    # 7. Crear Suscripción (Prueba Gratis de 14 Días)
-    ahora = datetime.now(timezone.utc)
-    fin_prueba = ahora + timedelta(days=14)
-    suscripcion = Suscripcion(
-        empresa_id=empresa.id,
-        plan_id=plan.id,
-        estado="PRUEBA_GRATIS",
-        fecha_inicio=ahora,
-        fecha_fin=fin_prueba,
-        dias_gracia=3,
-        tipo_periodo=datos.periodo.upper(),
-        notas="Prueba gratuita de 14 días otorgada al registrarse.",
-    )
-    db.add(suscripcion)
+        # 6. Crear Usuario Administrador con Email
+        res_max_usr = await db.execute(select(func.coalesce(func.max(Usuario.id), 0)))
+        next_usr_id = (res_max_usr.scalar() or 0) + 1
+        admin = Usuario(
+            id=next_usr_id,
+            nombre=datos.admin_nombre.strip(),
+            username=username_clean,
+            email=email_clean,
+            codigo_hash=hash_password(datos.admin_codigo),
+            rol_id=rol_admin.id,
+            empresa_id=empresa.id,
+            activo=True,
+        )
+        db.add(admin)
+        await db.flush()
 
-    # 8. Crear Configuración Empresa aislada para este tenant
-    res_max_cfg = await db.execute(select(func.coalesce(func.max(ConfiguracionEmpresa.id), 0)))
-    next_cfg_id = (res_max_cfg.scalar() or 0) + 1
-    cfg = ConfiguracionEmpresa(
-        id=next_cfg_id,
-        empresa_id=empresa.id,
-        nombre=datos.empresa_nombre,
-        nit=datos.empresa_nit or "",
-        ciudad=datos.empresa_ciudad or "",
-        telefono=datos.empresa_telefono or "",
-        direccion=datos.empresa_direccion or "",
-        rubro=datos.rubro or "COMERCIO_GENERAL",
-        pais="Colombia",
-        zona_horaria="America/Bogota",
-        primer_inicio=False,
-    )
-    db.add(cfg)
+        # 7. Crear Suscripción (Prueba Gratis de 14 Días)
+        ahora = datetime.now(timezone.utc)
+        fin_prueba = ahora + timedelta(days=14)
+        res_max_susc = await db.execute(select(func.coalesce(func.max(Suscripcion.id), 0)))
+        next_susc_id = (res_max_susc.scalar() or 0) + 1
+        suscripcion = Suscripcion(
+            id=next_susc_id,
+            empresa_id=empresa.id,
+            plan_id=plan.id,
+            estado="PRUEBA_GRATIS",
+            fecha_inicio=ahora,
+            fecha_fin=fin_prueba,
+            dias_gracia=3,
+            tipo_periodo=datos.periodo.upper(),
+            notas="Prueba gratuita de 14 días otorgada al registrarse.",
+        )
+        db.add(suscripcion)
 
-    # 8.1 Crear Cliente Mostrador inicial para la nueva empresa
-    from app.models.cliente import Cliente
-    cliente_mostrador = Cliente(
-        empresa_id=empresa.id,
-        nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
-        nit='222222222222',
-        tipo_doc='CC',
-        direccion='Mostrador',
-        telefono='0000000',
-        email='',
-        activo=True
-    )
-    db.add(cliente_mostrador)
+        # 8. Crear Configuración Empresa aislada para este tenant
+        res_max_cfg = await db.execute(select(func.coalesce(func.max(ConfiguracionEmpresa.id), 0)))
+        next_cfg_id = (res_max_cfg.scalar() or 0) + 1
+        cfg = ConfiguracionEmpresa(
+            id=next_cfg_id,
+            empresa_id=empresa.id,
+            nombre=datos.empresa_nombre,
+            nit=datos.empresa_nit or "",
+            ciudad=datos.empresa_ciudad or "",
+            telefono=datos.empresa_telefono or "",
+            direccion=datos.empresa_direccion or "",
+            rubro=datos.rubro or "COMERCIO_GENERAL",
+            pais="Colombia",
+            zona_horaria="America/Bogota",
+            primer_inicio=False,
+        )
+        db.add(cfg)
 
-    # 8.2 Sembrar categorías pertinentes al rubro de la nueva empresa
-    from app.models.producto import Categoria
-    CATEGORIAS_RUBRO_MAP = {
-        "FARMACIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
-        "DROGUERIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
-        "FERRETERIA": ["Herramientas Manuales", "Herramientas Eléctricas", "Construcción", "Tornillería y Fijaciones", "Pinturas y Químicos", "Plomería y Fontanería", "Eléctricos e Iluminación", "Cerrajería y Seguridad", "Ferretería", "General"],
-        "MINIMARKET": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
-        "SUPERMERCADO": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
-        "RESTAURANTE": ["Platos a la Carta", "Bebidas y Refrescos", "Desayunos", "Comidas Rápidas", "Postres y Dulces", "Combos y Promociones", "Entradas", "General"],
-        "PANADERIA": ["Panes Tradicionales", "Repostería y Pastelería", "Bebidas y Cafetería", "Postres y Dulces", "Lácteos", "Insumos de Panadería", "General"],
-        "ROPA": ["Ropa Hombre", "Ropa Mujer", "Ropa Infantil", "Calzado", "Accesorios", "Ropa Deportiva", "General"],
-        "COMERCIO_GENERAL": ["General", "Artículos Varios", "Accesorios", "Servicios"]
-    }
-    rubro_sel = (datos.rubro or "COMERCIO_GENERAL").upper()
-    cats_rubro = CATEGORIAS_RUBRO_MAP.get(rubro_sel, CATEGORIAS_RUBRO_MAP["COMERCIO_GENERAL"])
-    for nom_c in cats_rubro:
-        rc = await db.execute(select(Categoria).where(Categoria.nombre.ilike(nom_c)))
-        if not rc.scalars().first():
-            db.add(Categoria(nombre=nom_c, activo=True))
+        # 8.1 Crear Cliente Mostrador inicial para la nueva empresa
+        from app.models.cliente import Cliente
+        res_max_cli = await db.execute(select(func.coalesce(func.max(Cliente.id), 0)))
+        next_cli_id = (res_max_cli.scalar() or 0) + 1
+        cliente_mostrador = Cliente(
+            id=next_cli_id,
+            empresa_id=empresa.id,
+            nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
+            nit='222222222222',
+            tipo_doc='CC',
+            direccion='Mostrador',
+            telefono='0000000',
+            email='',
+            activo=True
+        )
+        db.add(cliente_mostrador)
 
-    await db.commit()
-    await db.refresh(admin)
-
-    # 9. Generar Tokens de Sesión Inmediatos
-    access_token = create_access_token({"sub": admin.username})
-    refresh_token = create_refresh_token(admin.id)
-
-    permisos = json.loads(rol_admin.permisos) if rol_admin and rol_admin.permisos else {"administrador_total": True}
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "usuario_id": admin.id,
-        "nombre": admin.nombre,
-        "username": admin.username,
-        "rol": rol_admin.nombre,
-        "permisos": permisos,
-        "empresa": {
-            "id": empresa.id,
-            "nombre": empresa.nombre,
-            "slug": empresa.slug,
-            "rubro": empresa.rubro,
-        },
-        "suscripcion": {
-            "plan_nombre": plan.nombre,
-            "plan_codigo": plan.codigo,
-            "estado": "PRUEBA_GRATIS",
-            "dias_restantes": 14,
-            "fecha_fin": fin_prueba.isoformat(),
+        # 8.2 Sembrar categorías pertinentes al rubro de la nueva empresa
+        from app.models.producto import Categoria
+        CATEGORIAS_RUBRO_MAP = {
+            "FARMACIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
+            "DROGUERIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
+            "FERRETERIA": ["Herramientas Manuales", "Herramientas Eléctricas", "Construcción", "Tornillería y Fijaciones", "Pinturas y Químicos", "Plomería y Fontanería", "Eléctricos e Iluminación", "Cerrajería y Seguridad", "Ferretería", "General"],
+            "MINIMARKET": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
+            "SUPERMERCADO": ["Abarrotes y Despensa", "Bebidas y Licores", "Lácteos y Huevos", "Frutas y Verduras", "Carnes y Embutidos", "Limpieza y Hogar", "Snacks y Dulces", "Panadería", "General"],
+            "RESTAURANTE": ["Platos a la Carta", "Bebidas y Refrescos", "Desayunos", "Comidas Rápidas", "Postres y Dulces", "Combos y Promociones", "Entradas", "General"],
+            "PANADERIA": ["Panes Tradicionales", "Repostería y Pastelería", "Bebidas y Cafetería", "Postres y Dulces", "Lácteos", "Insumos de Panadería", "General"],
+            "ROPA": ["Ropa Hombre", "Ropa Mujer", "Ropa Infantil", "Calzado", "Accesorios", "Ropa Deportiva", "General"],
+            "COMERCIO_GENERAL": ["General", "Artículos Varios", "Accesorios", "Servicios"]
         }
-    }
+        rubro_sel = (datos.rubro or "COMERCIO_GENERAL").upper()
+        cats_rubro = CATEGORIAS_RUBRO_MAP.get(rubro_sel, CATEGORIAS_RUBRO_MAP["COMERCIO_GENERAL"])
+        for nom_c in cats_rubro:
+            rc = await db.execute(select(Categoria).where(Categoria.nombre.ilike(nom_c)))
+            if not rc.scalars().first():
+                res_max_cat = await db.execute(select(func.coalesce(func.max(Categoria.id), 0)))
+                next_cat_id = (res_max_cat.scalar() or 0) + 1
+                db.add(Categoria(id=next_cat_id, nombre=nom_c, activo=True))
+
+        await db.commit()
+        await db.refresh(admin)
+
+        # 9. Generar Tokens de Sesión Inmediatos
+        access_token = create_access_token({"sub": admin.username})
+        refresh_token = create_refresh_token(admin.id)
+
+        permisos = json.loads(rol_admin.permisos) if rol_admin and rol_admin.permisos else {"administrador_total": True}
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "usuario_id": admin.id,
+            "nombre": admin.nombre,
+            "username": admin.username,
+            "rol": rol_admin.nombre,
+            "permisos": permisos,
+            "empresa": {
+                "id": empresa.id,
+                "nombre": empresa.nombre,
+                "slug": empresa.slug,
+                "rubro": empresa.rubro,
+            },
+            "suscripcion": {
+                "plan_nombre": plan.nombre,
+                "plan_codigo": plan.codigo,
+                "estado": "PRUEBA_GRATIS",
+                "dias_restantes": 14,
+                "fecha_fin": fin_prueba.isoformat(),
+            }
+        }
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al registrar nueva empresa: {str(e)}")
 
 async def obtener_estado_suscripcion_usuario(usuario: Usuario, db: AsyncSession) -> dict:
     """Consulta el estado actual de la suscripción del usuario / empresa."""
