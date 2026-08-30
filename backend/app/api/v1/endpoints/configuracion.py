@@ -8,6 +8,14 @@ from app.models.suscripcion import Empresa
 
 router = APIRouter(prefix="/configuracion", tags=["Configuración"])
 
+def _safe_float(val, default=0.0) -> float:
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 @router.get("/empresa")
 async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     empresa_id = current_user.empresa_id or 1
@@ -34,20 +42,28 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Dep
         await db.refresh(config)
 
     return {
-        "nombre": config.nombre, "nit": config.nit, "direccion": config.direccion,
-        "telefono": config.telefono, "email": config.email, "ciudad": config.ciudad,
-        "regimen": config.regimen, "logo_url": config.logo_url,
-        "mensaje_factura": config.mensaje_factura, "moneda_simbolo": config.moneda_simbolo,
-        "moneda_decimales": config.moneda_decimales, "factura_prefijo": config.factura_prefijo,
-        "iva_porcentaje": float(config.iva_porcentaje), "iva_incluido": config.iva_incluido,
-        "domicilio_corta": float(config.domicilio_corta),
-        "domicilio_media": float(config.domicilio_media),
-        "domicilio_larga": float(config.domicilio_larga),
-        "domicilio_tarifa_base": float(getattr(config, "domicilio_tarifa_base", 4000) or 4000),
-        "domicilio_costo_por_km": float(getattr(config, "domicilio_costo_por_km", 1500) or 1500),
-        "domicilio_gratis_desde": float(getattr(config, "domicilio_gratis_desde", 0) or 0),
+        "nombre": config.nombre or "Mi Empresa",
+        "nit": config.nit or "",
+        "direccion": config.direccion or "",
+        "telefono": config.telefono or "",
+        "email": config.email or "",
+        "ciudad": config.ciudad or "",
+        "regimen": config.regimen or "RESPONSABLE_IVA",
+        "logo_url": config.logo_url,
+        "mensaje_factura": config.mensaje_factura or "¡Gracias por su compra!",
+        "moneda_simbolo": config.moneda_simbolo or "$",
+        "moneda_decimales": config.moneda_decimales if config.moneda_decimales is not None else 0,
+        "factura_prefijo": config.factura_prefijo or "POS",
+        "iva_porcentaje": _safe_float(config.iva_porcentaje, 0.0),
+        "iva_incluido": bool(config.iva_incluido),
+        "domicilio_corta": _safe_float(config.domicilio_corta, 3000.0),
+        "domicilio_media": _safe_float(config.domicilio_media, 5000.0),
+        "domicilio_larga": _safe_float(config.domicilio_larga, 8000.0),
+        "domicilio_tarifa_base": _safe_float(getattr(config, "domicilio_tarifa_base", 4000), 4000.0),
+        "domicilio_costo_por_km": _safe_float(getattr(config, "domicilio_costo_por_km", 1500), 1500.0),
+        "domicilio_gratis_desde": _safe_float(getattr(config, "domicilio_gratis_desde", 0), 0.0),
         "rubro": config.rubro or "COMERCIO_GENERAL",
-        "margen_ganancia_predeterminado": float(getattr(config, "margen_ganancia_predeterminado", 30.00) or 30.00),
+        "margen_ganancia_predeterminado": _safe_float(getattr(config, "margen_ganancia_predeterminado", 30.00), 30.00),
         "modo_redondeo": getattr(config, "modo_redondeo", "CENTENA_100") or "CENTENA_100",
         "formato_impresion": getattr(config, "formato_impresion", "80MM") or "80MM",
         "resolucion_dian": getattr(config, "resolucion_dian", "") or "",

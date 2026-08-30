@@ -15,9 +15,48 @@ const RUBROS = [
   { id: 'GENERAL',      nombre: 'Comercio General',        desc: 'Para tiendas de ropa, calzado, tecnología y servicios.', icon: '🏬' },
 ]
 
+const DEFAULT_CONFIG = {
+  nombre: 'Mi Negocio',
+  nit: '',
+  direccion: '',
+  telefono: '',
+  email: '',
+  ciudad: '',
+  regimen: 'RESPONSABLE_IVA',
+  logo_url: '',
+  mensaje_factura: '¡Gracias por su compra!',
+  moneda_simbolo: '$',
+  moneda_decimales: 0,
+  factura_prefijo: 'POS',
+  iva_porcentaje: 0,
+  iva_incluido: false,
+  domicilio_corta: 3000,
+  domicilio_media: 5000,
+  domicilio_larga: 8000,
+  domicilio_tarifa_base: 4000,
+  domicilio_costo_por_km: 1500,
+  domicilio_gratis_desde: 0,
+  rubro: 'FARMACIA',
+  margen_ganancia_predeterminado: 30,
+  modo_redondeo: 'CENTENA_100',
+  formato_impresion: '80MM',
+  resolucion_dian: '',
+  pais: 'Colombia',
+  zona_horaria: 'America/Bogota',
+  fe_habilitada: false,
+  fe_proveedor: 'FACTUS',
+  fe_ambiente: 'SANDBOX',
+  fe_client_id: '',
+  fe_client_secret: '',
+  fe_rango_id: '',
+  fe_tipo_documento: 'POS_ELECTRONICO',
+  fe_municipio_id: '980',
+}
+
 export default function ParametrosEmpresa() {
-  const [config, setConfig] = useState(null)
-  const [form, setForm] = useState({})
+  const [config, setConfig] = useState(DEFAULT_CONFIG)
+  const [form, setForm] = useState(DEFAULT_CONFIG)
+  const [cargandoConfig, setCargandoConfig] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [aplicandoRedondeo, setAplicandoRedondeo] = useState(false)
   const [probandoFactus, setProbandoFactus] = useState(false)
@@ -33,8 +72,10 @@ export default function ParametrosEmpresa() {
 
   useEffect(() => {
     configApi.get().then(data => {
-      setConfig(data)
-      setForm(data)
+      if (data) {
+        setConfig(data)
+        setForm(data)
+      }
     }).catch(() => {})
     cargarResoluciones()
   }, [])
@@ -242,15 +283,6 @@ export default function ParametrosEmpresa() {
     } finally {
       setAplicandoRedondeo(false)
     }
-  }
-
-  if (!config) {
-    return (
-      <div className="text-center py-12 space-y-2">
-        <div className="w-7 h-7 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-dark-500 text-xs">Cargando parámetros de configuración...</p>
-      </div>
-    )
   }
 
   return (
