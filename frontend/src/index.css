@@ -101,3 +101,27 @@
   touch-action: pan-x;
   scroll-behavior: smooth;
 }
+
+/* ─── REGLA GENERAL GLOBAL: Cajones grandes y tablas siempre deslizables a la derecha en móvil ─── */
+@media screen and (max-width: 1024px) {
+  table {
+    touch-action: pan-x !important;
+  }
+
+  .overflow-x-auto,
+  .touch-scroll-x,
+  .table-responsive-container {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x !important;
+    overscroll-behavior-x: contain;
+  }
+
+  .card:has(table),
+  .card:has(thead),
+  .card:has(.table-responsive-container) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x !important;
+  }
+}

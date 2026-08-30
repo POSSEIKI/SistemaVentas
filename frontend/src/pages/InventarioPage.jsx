@@ -1432,8 +1432,8 @@ export default function InventarioPage() {
                         </div>
                       </div>
 
-                      <div className="card p-0 overflow-x-auto max-h-64 overflow-y-auto border border-dark-700">
-                        <table className="w-full text-xs">
+                      <div className="card p-0 overflow-x-auto max-h-64 overflow-y-auto border border-dark-700 w-full max-w-full touch-scroll-x table-responsive-container" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}>
+                        <table className="w-full text-xs min-w-[620px]" style={{ touchAction: 'pan-x' }}>
                           <thead className="bg-dark-900 text-dark-500 text-left sticky top-0 border-b border-dark-700">
                             <tr>
                               <th className="px-3 py-2">Código</th>
