@@ -52,6 +52,25 @@ async def init_db() -> None:
                 # Migraciones seguras para columnas añadidas a tablas existentes
                 from sqlalchemy import text
                 await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE SET NULL;"))
+                await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE productos ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE clientes ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE compras ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE facturas ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE movimientos_inventario ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+                await conn.execute(text("ALTER TABLE resoluciones_dian ADD COLUMN IF NOT EXISTS empresa_id INTEGER REFERENCES empresas(id) ON DELETE CASCADE;"))
+
+                # Asignar empresa_id = 1 a datos históricos sin empresa asignada
+                await conn.execute(text("UPDATE productos SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE clientes SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE proveedores SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE compras SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE facturas SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE movimientos_inventario SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE resoluciones_dian SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+                await conn.execute(text("UPDATE configuracion_empresa SET empresa_id = 1 WHERE empresa_id IS NULL;"))
+
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS pais VARCHAR(100) DEFAULT 'Colombia';"))
                 await conn.execute(text("ALTER TABLE configuracion_empresa ADD COLUMN IF NOT EXISTS zona_horaria VARCHAR(100) DEFAULT 'America/Bogota';"))
                 # Columnas Facturación Electrónica DIAN / Factus

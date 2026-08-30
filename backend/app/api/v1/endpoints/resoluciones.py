@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from typing import List, Optional
@@ -23,9 +23,10 @@ def _generar_texto_legal(r: ResolucionDianCreate | ResolucionDian) -> str:
 async def listar_resoluciones(
     tipo: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = select(ResolucionDian).order_by(ResolucionDian.activa.desc(), ResolucionDian.id.desc())
+    empresa_id = current_user.empresa_id or 1
+    query = select(ResolucionDian).where(ResolucionDian.empresa_id == empresa_id).order_by(ResolucionDian.activa.desc(), ResolucionDian.id.desc())
     if tipo:
         query = query.where(ResolucionDian.tipo_documento == tipo)
     result = await db.execute(query)
@@ -35,11 +36,16 @@ async def listar_resoluciones(
 async def get_resolucion_activa(
     tipo: str = "POS",
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
     result = await db.execute(
         select(ResolucionDian)
-        .where(ResolucionDian.activa == True, ResolucionDian.tipo_documento == tipo)
+        .where(
+            ResolucionDian.empresa_id == empresa_id,
+            ResolucionDian.activa == True,
+            ResolucionDian.tipo_documento == tipo
+        )
         .order_by(ResolucionDian.id.desc())
     )
     return result.scalars().first()
@@ -48,13 +54,17 @@ async def get_resolucion_activa(
 async def crear_resolucion(
     datos: ResolucionDianCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    current_user=Depends(require_admin),
 ):
-    # Si viene marcada como activa, desactivar las demás del mismo tipo
+    empresa_id = current_user.empresa_id or 1
+    # Si viene marcada como activa, desactivar las demás del mismo tipo en esta empresa
     if datos.activa:
         await db.execute(
             update(ResolucionDian)
-            .where(ResolucionDian.tipo_documento == datos.tipo_documento)
+            .where(
+                ResolucionDian.empresa_id == empresa_id,
+                ResolucionDian.tipo_documento == datos.tipo_documento
+            )
             .values(activa=False)
         )
     
@@ -67,6 +77,7 @@ async def crear_resolucion(
         consecutivo = max(0, datos.rango_desde - 1)
         
     resolucion = ResolucionDian(
+        empresa_id=empresa_id,
         tipo_documento=datos.tipo_documento,
         numero_resolucion=datos.numero_resolucion.strip(),
         prefijo=(datos.prefijo or "").strip().upper(),
@@ -84,9 +95,9 @@ async def crear_resolucion(
     await db.commit()
     await db.refresh(resolucion)
     
-    # Si quedó activa, sincronizar con ConfiguracionEmpresa
+    # Si quedó activa, sincronizar con ConfiguracionEmpresa de esta empresa
     if resolucion.activa:
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
         cfg = res_cfg.scalar_one_or_none()
         if cfg:
             cfg.resolucion_dian = resolucion.texto_resolucion
@@ -99,17 +110,26 @@ async def crear_resolucion(
 async def activar_resolucion(
     resolucion_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    current_user=Depends(require_admin),
 ):
-    result = await db.execute(select(ResolucionDian).where(ResolucionDian.id == resolucion_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(ResolucionDian).where(
+            ResolucionDian.id == resolucion_id,
+            ResolucionDian.empresa_id == empresa_id
+        )
+    )
     resolucion = result.scalar_one_or_none()
     if not resolucion:
         raise HTTPException(status_code=404, detail="Resolución no encontrada")
         
-    # Desactivar otras del mismo tipo
+    # Desactivar otras del mismo tipo en esta empresa
     await db.execute(
         update(ResolucionDian)
-        .where(ResolucionDian.tipo_documento == resolucion.tipo_documento)
+        .where(
+            ResolucionDian.empresa_id == empresa_id,
+            ResolucionDian.tipo_documento == resolucion.tipo_documento
+        )
         .values(activa=False)
     )
     
@@ -118,7 +138,7 @@ async def activar_resolucion(
     await db.refresh(resolucion)
     
     # Sincronizar en empresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     cfg = res_cfg.scalar_one_or_none()
     if cfg:
         cfg.resolucion_dian = resolucion.texto_resolucion or _generar_texto_legal(resolucion)
@@ -132,9 +152,15 @@ async def actualizar_resolucion(
     resolucion_id: int,
     datos: ResolucionDianUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    current_user=Depends(require_admin),
 ):
-    result = await db.execute(select(ResolucionDian).where(ResolucionDian.id == resolucion_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(ResolucionDian).where(
+            ResolucionDian.id == resolucion_id,
+            ResolucionDian.empresa_id == empresa_id
+        )
+    )
     resolucion = result.scalar_one_or_none()
     if not resolucion:
         raise HTTPException(status_code=404, detail="Resolución no encontrada")
@@ -143,7 +169,11 @@ async def actualizar_resolucion(
     if dict_datos.get("activa") is True:
         await db.execute(
             update(ResolucionDian)
-            .where(ResolucionDian.tipo_documento == resolucion.tipo_documento, ResolucionDian.id != resolucion_id)
+            .where(
+                ResolucionDian.empresa_id == empresa_id,
+                ResolucionDian.tipo_documento == resolucion.tipo_documento,
+                ResolucionDian.id != resolucion_id
+            )
             .values(activa=False)
         )
         
@@ -155,7 +185,7 @@ async def actualizar_resolucion(
     await db.refresh(resolucion)
     
     if resolucion.activa:
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
         cfg = res_cfg.scalar_one_or_none()
         if cfg:
             cfg.resolucion_dian = resolucion.texto_resolucion
@@ -168,9 +198,15 @@ async def actualizar_resolucion(
 async def eliminar_resolucion(
     resolucion_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    current_user=Depends(require_admin),
 ):
-    result = await db.execute(select(ResolucionDian).where(ResolucionDian.id == resolucion_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(ResolucionDian).where(
+            ResolucionDian.id == resolucion_id,
+            ResolucionDian.empresa_id == empresa_id
+        )
+    )
     resolucion = result.scalar_one_or_none()
     if not resolucion:
         raise HTTPException(status_code=404, detail="Resolución no encontrada")

@@ -5,8 +5,9 @@ from app.db.database import Base
 class Proveedor(Base):
     __tablename__ = "proveedores"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
     razon_social = Column(String(200), nullable=False)
-    nit = Column(String(20), unique=True)
+    nit = Column(String(20))
     contacto = Column(String(100))
     telefono = Column(String(20))
     email = Column(String(100))
@@ -19,7 +20,8 @@ class Proveedor(Base):
 class Compra(Base):
     __tablename__ = "compras"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    numero = Column(String(20), unique=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
+    numero = Column(String(20), nullable=False)
     fecha = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     proveedor_id = Column(Integer, ForeignKey("proveedores.id"))
     numero_factura_proveedor = Column(String(50))
@@ -50,6 +52,7 @@ class CompraDetalle(Base):
 class MovimientoInventario(Base):
     __tablename__ = "movimientos_inventario"
     id = Column(Integer, primary_key=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
     producto_id = Column(Integer, ForeignKey("productos.id"), nullable=False, index=True)
     fecha = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     tipo = Column(String(20), nullable=False)  # ENTRADA|SALIDA|AJUSTE|DEVOLUCION

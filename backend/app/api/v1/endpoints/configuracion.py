@@ -1,18 +1,38 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.db.database import get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.configuracion import ConfiguracionEmpresa
+from app.models.suscripcion import Empresa
 
 router = APIRouter(prefix="/configuracion", tags=["Configuración"])
 
 @router.get("/empresa")
-async def get_configuracion(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     config = result.scalar_one_or_none()
     if not config:
-        return {}
+        # Si no existe, crearla con los datos de la empresa
+        res_emp = await db.execute(select(Empresa).where(Empresa.id == empresa_id))
+        emp = res_emp.scalar_one_or_none()
+        config = ConfiguracionEmpresa(
+            empresa_id=empresa_id,
+            nombre=emp.nombre if emp else "Mi Empresa",
+            nit=emp.nit if emp and emp.nit else "",
+            rubro=emp.rubro if emp and emp.rubro else "COMERCIO_GENERAL",
+            pais="Colombia",
+            zona_horaria="America/Bogota"
+        )
+        db.add(config)
+        await db.commit()
+        await db.refresh(config)
+
     return {
         "nombre": config.nombre, "nit": config.nit, "direccion": config.direccion,
         "telefono": config.telefono, "email": config.email, "ciudad": config.ciudad,
@@ -23,7 +43,7 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), _=Depends(get_cu
         "domicilio_corta": float(config.domicilio_corta),
         "domicilio_media": float(config.domicilio_media),
         "domicilio_larga": float(config.domicilio_larga),
-        "rubro": config.rubro or "FARMACIA",
+        "rubro": config.rubro or "COMERCIO_GENERAL",
         "margen_ganancia_predeterminado": float(getattr(config, "margen_ganancia_predeterminado", 30.00) or 30.00),
         "modo_redondeo": getattr(config, "modo_redondeo", "CENTENA_100") or "CENTENA_100",
         "formato_impresion": getattr(config, "formato_impresion", "80MM") or "80MM",
@@ -45,13 +65,19 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), _=Depends(get_cu
 async def actualizar_configuracion(
     datos: dict,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    current_user=Depends(require_admin),
 ):
-    result = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     config = result.scalar_one_or_none()
     if not config:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+        config = ConfiguracionEmpresa(empresa_id=empresa_id)
+        db.add(config)
+
     campos_permitidos = [
         "nombre", "nit", "direccion", "telefono", "email", "ciudad",
         "regimen", "logo_url", "mensaje_factura", "moneda_simbolo",
@@ -65,6 +91,7 @@ async def actualizar_configuracion(
     for campo, valor in datos.items():
         if campo in campos_permitidos:
             setattr(config, campo, valor)
+    config.empresa_id = empresa_id
     await db.commit()
     return {"mensaje": "Configuración actualizada"}
 

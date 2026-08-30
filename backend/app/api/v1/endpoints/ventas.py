@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo
 
 router = APIRouter(tags=["Ventas"])
 
-async def _obtener_zona_horaria(db: AsyncSession) -> ZoneInfo:
-    res = await db.execute(select(ConfiguracionEmpresa.zona_horaria).where(ConfiguracionEmpresa.id == 1))
+async def _obtener_zona_horaria(db: AsyncSession, empresa_id: int = 1) -> ZoneInfo:
+    res = await db.execute(select(ConfiguracionEmpresa.zona_horaria).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     zh = res.scalar() or "America/Bogota"
     try:
         return ZoneInfo(zh)
@@ -33,9 +33,10 @@ async def _obtener_zona_horaria(db: AsyncSession) -> ZoneInfo:
 async def listar_clientes(
     q: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = select(Cliente).where(Cliente.activo == True)
+    empresa_id = current_user.empresa_id or 1
+    query = select(Cliente).where(Cliente.empresa_id == empresa_id, Cliente.activo == True)
     if q:
         query = query.where(or_(
             Cliente.nombre.ilike(f"%{q}%"),
@@ -48,30 +49,37 @@ async def listar_clientes(
     return result.scalars().all()
 
 @router.get("/clientes/{cliente_id}", response_model=ClienteOut)
-async def get_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+async def get_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id, Cliente.empresa_id == empresa_id))
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return cliente
 
 @router.get("/clientes/buscar-nit/{nit}", response_model=ClienteOut)
-async def buscar_cliente_nit(nit: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(Cliente).where(Cliente.nit == nit))
+async def buscar_cliente_nit(nit: str, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Cliente).where(Cliente.nit == nit, Cliente.empresa_id == empresa_id))
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return cliente
 
 @router.post("/clientes", response_model=ClienteOut)
-async def crear_cliente(datos: ClienteCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def crear_cliente(datos: ClienteCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
     if datos.nit and datos.nit.strip():
-        res_existente = await db.execute(select(Cliente).where(Cliente.nit == datos.nit.strip()))
+        res_existente = await db.execute(
+            select(Cliente).where(Cliente.empresa_id == empresa_id, Cliente.nit == datos.nit.strip())
+        )
         existente = res_existente.scalar_one_or_none()
         if existente:
-            raise HTTPException(status_code=400, detail=f"Ya existe un cliente registrado con el documento {datos.nit}")
+            raise HTTPException(status_code=400, detail=f"Ya existe un cliente registrado en tu negocio con el documento {datos.nit}")
 
-    cliente = Cliente(**datos.model_dump())
+    c_dict = datos.model_dump()
+    c_dict["empresa_id"] = empresa_id
+    cliente = Cliente(**c_dict)
     db.add(cliente)
     await db.commit()
     await db.refresh(cliente)
@@ -82,16 +90,23 @@ async def actualizar_cliente(
     cliente_id: int,
     datos: ClienteUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id, Cliente.empresa_id == empresa_id))
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    # Si se intenta cambiar el NIT, validar duplicados
+    # Si se intenta cambiar el NIT, validar duplicados dentro de la empresa
     if datos.nit and datos.nit.strip() != cliente.nit:
-        res_dup = await db.execute(select(Cliente).where(Cliente.nit == datos.nit.strip(), Cliente.id != cliente_id))
+        res_dup = await db.execute(
+            select(Cliente).where(
+                Cliente.empresa_id == empresa_id,
+                Cliente.nit == datos.nit.strip(),
+                Cliente.id != cliente_id
+            )
+        )
         if res_dup.scalar_one_or_none():
             raise HTTPException(status_code=400, detail=f"Ya existe otro cliente con el documento {datos.nit}")
 
@@ -104,10 +119,9 @@ async def actualizar_cliente(
     return cliente
 
 @router.delete("/clientes/{cliente_id}")
-async def eliminar_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    if cliente_id == 1:
-        raise HTTPException(status_code=400, detail="No se puede eliminar el Cliente Mostrador por defecto del sistema")
-    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id))
+async def eliminar_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Cliente).where(Cliente.id == cliente_id, Cliente.empresa_id == empresa_id))
     cliente = result.scalar_one_or_none()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -117,13 +131,16 @@ async def eliminar_cliente(cliente_id: int, db: AsyncSession = Depends(get_db), 
     return {"mensaje": "Cliente desactivado correctamente"}
 
 @router.post("/clientes/crear-o-encontrar", response_model=ClienteOut)
-async def crear_o_encontrar(datos: ClienteCreate, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def crear_o_encontrar(datos: ClienteCreate, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
     if datos.nit:
-        result = await db.execute(select(Cliente).where(Cliente.nit == datos.nit))
+        result = await db.execute(select(Cliente).where(Cliente.empresa_id == empresa_id, Cliente.nit == datos.nit))
         existente = result.scalar_one_or_none()
         if existente:
             return existente
-    cliente = Cliente(**datos.model_dump())
+    c_dict = datos.model_dump()
+    c_dict["empresa_id"] = empresa_id
+    cliente = Cliente(**c_dict)
     db.add(cliente)
     await db.commit()
     await db.refresh(cliente)
@@ -147,9 +164,14 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
     if not f:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    empresa_id = f.empresa_id or 1
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     cfg = res_cfg.scalar_one_or_none()
-    tz = await _obtener_zona_horaria(db)
+    tz = await _obtener_zona_horaria(db, empresa_id)
 
     fecha_dt = f.fecha
     if fecha_dt:
@@ -203,7 +225,7 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
             "nombre": f.usuario.nombre if f.usuario else "Cajero",
         } if f.usuario else {"id": 1, "nombre": "Cajero"},
         "empresa": {
-            "nombre": cfg.nombre if cfg and cfg.nombre else "Mi Empresa / Droguería",
+            "nombre": cfg.nombre if cfg and cfg.nombre else "Mi Empresa",
             "nit": cfg.nit if cfg and cfg.nit else "",
             "direccion": cfg.direccion if cfg and cfg.direccion else "",
             "telefono": cfg.telefono if cfg and cfg.telefono else "",
@@ -252,10 +274,15 @@ async def crear_factura(
     db: AsyncSession = Depends(get_db),
     usuario=Depends(get_current_user),
 ):
-    factura = await venta_service.crear_factura(datos, usuario.id, db)
+    empresa_id = usuario.empresa_id or 1
+    factura = await venta_service.crear_factura(datos, usuario.id, db, empresa_id=empresa_id)
 
     # Si la empresa tiene habilitada la Facturación Electrónica DIAN / Factus, emitir automáticamente
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     cfg = res_cfg.scalar_one_or_none()
     if cfg and cfg.fe_habilitada and cfg.fe_client_id and cfg.fe_client_secret:
         try:
@@ -273,10 +300,11 @@ async def listar_facturas(
     estado: Optional[str] = None,
     limite: int = Query(50, le=200),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    tz = await _obtener_zona_horaria(db)
-    query = select(Factura).order_by(Factura.fecha.desc())
+    empresa_id = current_user.empresa_id or 1
+    tz = await _obtener_zona_horaria(db, empresa_id)
+    query = select(Factura).where(Factura.empresa_id == empresa_id).order_by(Factura.fecha.desc())
     if estado:
         query = query.where(Factura.estado == estado)
     if fecha_inicio:
@@ -317,8 +345,14 @@ async def listar_facturas(
 async def emitir_factura_dian(
     factura_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
+    # Validar pertenencia a la empresa
+    res_f = await db.execute(select(Factura).where(Factura.id == factura_id, Factura.empresa_id == empresa_id))
+    if not res_f.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+
     from app.services.factus_service import enviar_factura_a_dian
     resultado = await enviar_factura_a_dian(factura_id, db)
     factura_act = await _formatear_factura_completa(factura_id, db)
@@ -327,9 +361,12 @@ async def emitir_factura_dian(
         "factura": factura_act,
     }
 
-
 @router.get("/facturas/{factura_id}")
-async def get_factura(factura_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def get_factura(factura_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    res_f = await db.execute(select(Factura).where(Factura.id == factura_id, Factura.empresa_id == empresa_id))
+    if not res_f.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
     return await _formatear_factura_completa(factura_id, db)
 
 @router.post("/facturas/{factura_id}/anular")
@@ -339,6 +376,10 @@ async def anular_factura(
     db: AsyncSession = Depends(get_db),
     usuario=Depends(get_current_user),
 ):
+    empresa_id = usuario.empresa_id or 1
+    res_f = await db.execute(select(Factura).where(Factura.id == factura_id, Factura.empresa_id == empresa_id))
+    if not res_f.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
     factura = await venta_service.anular_factura(factura_id, body.motivo, usuario.id, db)
     return {"mensaje": f"Factura {factura.numero} anulada exitosamente"}
 
@@ -349,6 +390,10 @@ async def devolver_factura(
     db: AsyncSession = Depends(get_db),
     usuario=Depends(get_current_user),
 ):
+    empresa_id = usuario.empresa_id or 1
+    res_f = await db.execute(select(Factura).where(Factura.id == factura_id, Factura.empresa_id == empresa_id))
+    if not res_f.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
     resultado = await venta_service.procesar_devolucion_factura(factura_id, body, usuario.id, db)
     return resultado
 
@@ -356,15 +401,16 @@ async def devolver_factura(
 async def listar_bonos(
     cliente_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
     return await venta_service.listar_bonos_cliente(cliente_id, db)
 
 @router.get("/bonos/verificar/{codigo}")
 async def verificar_bono(
     codigo: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return await venta_service.verificar_bono_codigo(codigo, db)
 
@@ -374,9 +420,10 @@ async def verificar_bono(
 async def resumen_dia(
     fecha: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    tz = await _obtener_zona_horaria(db)
+    empresa_id = current_user.empresa_id or 1
+    tz = await _obtener_zona_horaria(db, empresa_id)
     if fecha is None:
         ahora_local = datetime.now(tz)
         dia = ahora_local.date()
@@ -394,6 +441,7 @@ async def resumen_dia(
             func.sum(Factura.total).label("total_ventas"),
             func.sum(Factura.iva_valor).label("total_iva"),
         ).where(
+            Factura.empresa_id == empresa_id,
             Factura.fecha >= dt_inicio_utc,
             Factura.fecha <= dt_fin_utc,
             Factura.estado == "EMITIDA",

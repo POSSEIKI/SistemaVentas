@@ -17,7 +17,8 @@ async def registrar_compra(
     db: AsyncSession = Depends(get_db),
     usuario=Depends(get_current_user),
 ):
-    compra = await venta_service.crear_compra(datos, usuario.id, db)
+    empresa_id = usuario.empresa_id or 1
+    compra = await venta_service.crear_compra(datos, usuario.id, db, empresa_id=empresa_id)
     return {"id": compra.id, "numero": compra.numero, "total": float(compra.total)}
 
 @router.get("/compras")
@@ -28,15 +29,17 @@ async def listar_compras(
     proveedor_id: Optional[int] = None,
     limite: int = 50,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     from app.models.inventario import Compra, CompraDetalle, Proveedor
     from sqlalchemy.orm import joinedload, selectinload
     from datetime import datetime, time
 
+    empresa_id = current_user.empresa_id or 1
     query = (
         select(Compra)
         .options(joinedload(Compra.proveedor), selectinload(Compra.lineas))
+        .where(Compra.empresa_id == empresa_id)
         .order_by(Compra.fecha.desc())
     )
 
@@ -98,19 +101,20 @@ async def listar_compras(
 async def obtener_compra(
     id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     from app.models.inventario import Compra, CompraDetalle
     from app.models.usuario import Usuario
     from sqlalchemy.orm import joinedload, selectinload
 
+    empresa_id = current_user.empresa_id or 1
     query = (
         select(Compra)
         .options(
             joinedload(Compra.proveedor),
             selectinload(Compra.lineas).joinedload(CompraDetalle.producto)
         )
-        .where(Compra.id == id)
+        .where(Compra.id == id, Compra.empresa_id == empresa_id)
     )
     result = await db.execute(query)
     c = result.scalar_one_or_none()
@@ -162,15 +166,17 @@ async def obtener_compra(
 async def analizar_factura_excel(
     archivo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     contenido = await archivo.read()
     if not contenido:
         raise HTTPException(status_code=400, detail="El archivo enviado está vacío")
+    empresa_id = current_user.empresa_id or 1
     resultado = await inventario_service.analizar_factura_compra_excel(
         file_bytes=contenido,
         filename=archivo.filename,
         db=db,
+        empresa_id=empresa_id,
     )
     return resultado
 
@@ -179,9 +185,10 @@ async def listar_movimientos(
     producto_id: Optional[int] = None,
     limite: int = Query(100, le=500),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = select(MovimientoInventario).order_by(MovimientoInventario.fecha.desc())
+    empresa_id = current_user.empresa_id or 1
+    query = select(MovimientoInventario).where(MovimientoInventario.empresa_id == empresa_id).order_by(MovimientoInventario.fecha.desc())
     if producto_id:
         query = query.where(MovimientoInventario.producto_id == producto_id)
     result = await db.execute(query.limit(limite))
@@ -197,9 +204,11 @@ async def listar_movimientos(
     ]
 
 @router.get("/inventario/stock-bajo")
-async def stock_bajo(db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def stock_bajo(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
     result = await db.execute(
         select(Producto).where(
+            Producto.empresa_id == empresa_id,
             Producto.activo == True,
             Producto.afecta_inventario == True,
             Producto.stock_actual <= Producto.stock_minimo,
@@ -219,9 +228,10 @@ async def listar_proveedores(
     q: Optional[str] = None,
     solo_activos: bool = True,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = select(Proveedor)
+    empresa_id = current_user.empresa_id or 1
+    query = select(Proveedor).where(Proveedor.empresa_id == empresa_id)
     if solo_activos:
         query = query.where(Proveedor.activo == True)
     if q:
@@ -240,9 +250,10 @@ async def listar_proveedores(
 async def obtener_proveedor(
     proveedor_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id, Proveedor.empresa_id == empresa_id))
     proveedor = result.scalar_one_or_none()
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -252,14 +263,19 @@ async def obtener_proveedor(
 async def crear_proveedor(
     datos: ProveedorCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
     if datos.nit:
-        existente = await db.execute(select(Proveedor).where(Proveedor.nit == datos.nit))
+        existente = await db.execute(
+            select(Proveedor).where(Proveedor.empresa_id == empresa_id, Proveedor.nit == datos.nit)
+        )
         if existente.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Ya existe un proveedor con este NIT / Documento")
+            raise HTTPException(status_code=400, detail="Ya existe un proveedor con este NIT / Documento en tu negocio")
 
-    proveedor = Proveedor(**datos.model_dump())
+    prov_dict = datos.model_dump()
+    prov_dict["empresa_id"] = empresa_id
+    proveedor = Proveedor(**prov_dict)
     db.add(proveedor)
     await db.commit()
     await db.refresh(proveedor)
@@ -270,16 +286,23 @@ async def actualizar_proveedor(
     proveedor_id: int,
     datos: ProveedorUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id, Proveedor.empresa_id == empresa_id))
     proveedor = result.scalar_one_or_none()
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
     update_data = datos.model_dump(exclude_unset=True)
     if "nit" in update_data and update_data["nit"] and update_data["nit"] != proveedor.nit:
-        existente = await db.execute(select(Proveedor).where(Proveedor.nit == update_data["nit"], Proveedor.id != proveedor_id))
+        existente = await db.execute(
+            select(Proveedor).where(
+                Proveedor.empresa_id == empresa_id,
+                Proveedor.nit == update_data["nit"],
+                Proveedor.id != proveedor_id
+            )
+        )
         if existente.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Ya existe otro proveedor con este NIT / Documento")
 
@@ -294,9 +317,10 @@ async def actualizar_proveedor(
 async def eliminar_o_desactivar_proveedor(
     proveedor_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(select(Proveedor).where(Proveedor.id == proveedor_id, Proveedor.empresa_id == empresa_id))
     proveedor = result.scalar_one_or_none()
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")

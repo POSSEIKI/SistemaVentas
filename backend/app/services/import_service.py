@@ -43,7 +43,7 @@ def _parse_int(val: Any, default: int = 0) -> int:
     except Exception:
         return default
 
-async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db: AsyncSession) -> Dict[str, Any]:
+async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db: AsyncSession, empresa_id: int = 1) -> Dict[str, Any]:
     nombre_archivo = nombre_archivo.lower()
     filas_crudas = []
 
@@ -292,6 +292,7 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
             codigos_vistos.add(codigo)
 
             productos_a_procesar.append({
+                "empresa_id": empresa_id,
                 "codigo": codigo,
                 "codigo_barras": codigo_barras,
                 "codigo_barras_blister": codigo_barras_blister,
@@ -325,45 +326,46 @@ async def procesar_archivo_inventario(contenido: bytes, nombre_archivo: str, db:
     if not productos_a_procesar:
         raise ValueError("No se pudieron extraer productos válidos del archivo")
 
-    # 4. Upsert Masivo de alto rendimiento en bloques optimizados
-    chunk_size = 1000
+    # 4. Upsert Masivo por empresa
+    chunk_size = 500
     total_procesados = len(productos_a_procesar)
+    creados = 0
+    actualizados = 0
 
     for idx in range(0, total_procesados, chunk_size):
         chunk = productos_a_procesar[idx:idx + chunk_size]
-        stmt = pg_insert(Producto).values(chunk)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=['codigo'],
-            set_={
-                'nombre': stmt.excluded.nombre,
-                'codigo_barras': func.coalesce(stmt.excluded.codigo_barras, Producto.codigo_barras),
-                'codigo_barras_blister': func.coalesce(stmt.excluded.codigo_barras_blister, Producto.codigo_barras_blister),
-                'codigo_barras_unidad': func.coalesce(stmt.excluded.codigo_barras_unidad, Producto.codigo_barras_unidad),
-                'categoria_id': func.coalesce(stmt.excluded.categoria_id, Producto.categoria_id),
-                'precio_venta': stmt.excluded.precio_venta,
-                'precio_costo': stmt.excluded.precio_costo,
-                'iva_porcentaje': stmt.excluded.iva_porcentaje,
-                'stock_actual': stmt.excluded.stock_actual,
-                'stock_minimo': stmt.excluded.stock_minimo,
-                'maneja_fracciones': stmt.excluded.maneja_fracciones,
-                'contenido_caja': stmt.excluded.contenido_caja,
-                'contenido_blister': stmt.excluded.contenido_blister,
-                'precio_caja': stmt.excluded.precio_caja,
-                'precio_blister': stmt.excluded.precio_blister,
-                'precio_unidad': stmt.excluded.precio_unidad,
-                'laboratorio': func.coalesce(stmt.excluded.laboratorio, Producto.laboratorio),
-                'principio_activo': func.coalesce(stmt.excluded.principio_activo, Producto.principio_activo),
-                'ubicacion': func.coalesce(stmt.excluded.ubicacion, Producto.ubicacion),
-                'activo': True,
-            }
+        codigos_chunk = [p["codigo"] for p in chunk]
+        
+        # Buscar existentes para esta empresa
+        stmt_exist = select(Producto).where(
+            Producto.empresa_id == empresa_id,
+            Producto.codigo.in_(codigos_chunk)
         )
-        await db.execute(stmt)
+        res_exist = await db.execute(stmt_exist)
+        existentes_dict = {p.codigo: p for p in res_exist.scalars().all()}
+
+        for p_dict in chunk:
+            p_cod = p_dict["codigo"]
+            if p_cod in existentes_dict:
+                # Actualizar existente
+                p_obj = existentes_dict[p_cod]
+                for k, v in p_dict.items():
+                    if k != "id":
+                        setattr(p_obj, k, v)
+                actualizados += 1
+            else:
+                # Crear nuevo
+                nuevo_prod = Producto(**p_dict)
+                db.add(nuevo_prod)
+                creados += 1
+
+        await db.flush()
 
     await db.commit()
 
     return {
         "mensaje": f"¡Éxito! Se procesaron {total_procesados} productos correctamente.",
         "total_procesados": total_procesados,
-        "creados": total_procesados,
-        "actualizados": 0,
+        "creados": creados,
+        "actualizados": actualizados,
     }

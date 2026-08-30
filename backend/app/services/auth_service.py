@@ -95,9 +95,14 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
     permisos = json.loads(rol.permisos) if rol else {}
 
     # Obtener rubro de empresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    empresa_id = usuario.empresa_id or 1
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
     cfg = res_cfg.scalar_one_or_none()
-    rubro = cfg.rubro if cfg else "FARMACIA"
+    rubro = cfg.rubro if cfg else "COMERCIO_GENERAL"
 
     access_token = create_access_token({"sub": usuario.username})
     refresh_token = create_refresh_token(usuario.id)

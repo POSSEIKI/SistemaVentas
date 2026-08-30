@@ -5,7 +5,8 @@ from app.db.database import Base
 class Factura(Base):
     __tablename__ = "facturas"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    numero = Column(String(20), unique=True, nullable=False, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
+    numero = Column(String(20), nullable=False, index=True)
     fecha = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)

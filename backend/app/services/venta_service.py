@@ -19,18 +19,18 @@ from app.models.usuario import Usuario, Rol
 from app.core.security import verify_password
 from app.schemas.ventas import FacturaCreate, CompraCreate, DevolucionFacturaRequest
 
-async def _siguiente_numero(db: AsyncSession, prefijo: str, modelo, campo) -> str:
+async def _siguiente_numero(db: AsyncSession, prefijo: str, modelo, campo, empresa_id: int = 1) -> str:
     result = await db.execute(
-        select(func.count()).select_from(modelo)
+        select(func.count()).select_from(modelo).where(modelo.empresa_id == empresa_id)
     )
     total = result.scalar() or 0
     return f"{prefijo}{str(total + 1).zfill(6)}"
 
-async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession) -> Factura:
-    # 1. Buscar si existe una Resolución DIAN activa
+async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession, empresa_id: int = 1) -> Factura:
+    # 1. Buscar si existe una Resolución DIAN activa para esta empresa
     res_resolucion = await db.execute(
         select(ResolucionDian)
-        .where(ResolucionDian.activa == True)
+        .where(ResolucionDian.empresa_id == empresa_id, ResolucionDian.activa == True)
         .order_by(ResolucionDian.id.desc())
     )
     resolucion = res_resolucion.scalars().first()
@@ -49,11 +49,11 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
         resolucion.consecutivo_actual = consecutivo
         numero = f"{prefijo}{str(consecutivo).zfill(6)}"
     else:
-        # Fallback a configuración general
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        # Fallback a configuración general de esta empresa
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
         config = res_cfg.scalar_one_or_none()
         prefijo = config.factura_prefijo if config else "FV"
-        numero = await _siguiente_numero(db, prefijo, Factura, "numero")
+        numero = await _siguiente_numero(db, prefijo, Factura, "numero", empresa_id)
 
     subtotal = Decimal("0")
     descuento_total = Decimal("0")
@@ -61,10 +61,10 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
     lineas_db = []
 
     for linea in datos.lineas:
-        result = await db.execute(select(Producto).where(Producto.id == linea.producto_id))
+        result = await db.execute(select(Producto).where(Producto.id == linea.producto_id, Producto.empresa_id == empresa_id))
         producto = result.scalar_one_or_none()
         if not producto:
-            raise HTTPException(status_code=404, detail=f"Producto {linea.producto_id} no encontrado")
+            raise HTTPException(status_code=404, detail=f"Producto {linea.producto_id} no encontrado en tu inventario")
 
         factor = getattr(linea, 'factor_multiplicador', Decimal('1')) or Decimal('1')
         unidades_a_descontar = (linea.cantidad * factor)
@@ -115,6 +115,7 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
                 obs_mov += " [ENCARGO]"
 
             mov = MovimientoInventario(
+                empresa_id=empresa_id,
                 producto_id=producto.id,
                 tipo="SALIDA",
                 cantidad=unidades_a_descontar,
@@ -144,6 +145,7 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession)
     cambio = max(Decimal("0"), datos.valor_recibido - total)
 
     factura = Factura(
+        empresa_id=empresa_id,
         numero=numero,
         fecha=datetime.now(timezone.utc),
         cliente_id=datos.cliente_id,
@@ -189,6 +191,7 @@ async def anular_factura(factura_id: int, motivo: str, usuario_id: int, db: Asyn
             stock_ant = producto.stock_actual
             producto.stock_actual = producto.stock_actual + unids_retorno
             mov = MovimientoInventario(
+                empresa_id=factura.empresa_id or 1,
                 producto_id=producto.id,
                 tipo="DEVOLUCION",
                 cantidad=unids_retorno,
@@ -272,6 +275,7 @@ async def procesar_devolucion_factura(
             stock_ant = producto.stock_actual
             producto.stock_actual = producto.stock_actual + unids_retorno
             mov = MovimientoInventario(
+                empresa_id=factura.empresa_id or 1,
                 producto_id=producto.id,
                 tipo="DEVOLUCION",
                 cantidad=unids_retorno,
@@ -379,17 +383,23 @@ async def verificar_bono_codigo(codigo: str, db: AsyncSession) -> Dict[str, Any]
         "monto_inicial": float(b.monto_inicial),
         "saldo_disponible": float(b.saldo_disponible),
         "estado": b.estado,
-    }
-
-async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -> Compra:
-    # 0. Validación Anti-Duplicados: Evitar ingresar dos veces la misma factura del proveedor
+async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession, empresa_id: int = 1) -> Compra:
+    # 0. Validar si ya existe una factura de compra con el mismo número del mismo proveedor en esta empresa
     if datos.numero_factura_proveedor and datos.numero_factura_proveedor.strip():
         num_clean = datos.numero_factura_proveedor.strip()
-        stmt_check = select(Compra).options(joinedload(Compra.proveedor)).where(Compra.numero_factura_proveedor == num_clean)
+        cond_dup = [
+            Compra.empresa_id == empresa_id,
+            func.lower(Compra.numero_factura_proveedor) == num_clean.lower(),
+            Compra.estado != "ANULADA"
+        ]
         if datos.proveedor_id:
-            stmt_check = stmt_check.where(Compra.proveedor_id == datos.proveedor_id)
-        res_dup = await db.execute(stmt_check)
-        c_dup = res_dup.scalar_one_or_none()
+            cond_dup.append(Compra.proveedor_id == datos.proveedor_id)
+        res_dup = await db.execute(
+            select(Compra)
+            .options(joinedload(Compra.proveedor))
+            .where(*cond_dup)
+        )
+        c_dup = res_dup.scalars().first()
         if c_dup:
             fecha_str = c_dup.fecha.strftime('%d/%m/%Y a las %H:%M') if c_dup.fecha else 'fecha previa'
             prov_str = f" del proveedor {c_dup.proveedor.razon_social}" if c_dup.proveedor else ""
@@ -398,13 +408,13 @@ async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -
                 detail=f"La factura de compra N° '{num_clean}'{prov_str} ya fue registrada previamente en el sistema (Comprobante {c_dup.numero} del {fecha_str} - Total: ${float(c_dup.total):,.0f}). No se puede volver a ingresar para evitar duplicidad de inventario y costos."
             )
 
-    numero = await _siguiente_numero(db, "CO", Compra, "numero")
+    numero = await _siguiente_numero(db, "CO", Compra, "numero", empresa_id)
     subtotal = Decimal("0")
     iva_total = Decimal("0")
     lineas_db = []
 
     for linea in datos.lineas:
-        result = await db.execute(select(Producto).where(Producto.id == linea.producto_id))
+        result = await db.execute(select(Producto).where(Producto.id == linea.producto_id, Producto.empresa_id == empresa_id))
         producto = result.scalar_one_or_none()
         if not producto:
             raise HTTPException(status_code=404, detail=f"Producto {linea.producto_id} no encontrado")
@@ -469,6 +479,7 @@ async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -
                 producto.codigo_barras_unidad = linea.codigo_barras_unidad
 
             mov = MovimientoInventario(
+                empresa_id=empresa_id,
                 producto_id=producto.id,
                 tipo="ENTRADA",
                 cantidad=linea.cantidad,
@@ -481,6 +492,7 @@ async def crear_compra(datos: CompraCreate, usuario_id: int, db: AsyncSession) -
             db.add(mov)
 
     compra = Compra(
+        empresa_id=empresa_id,
         numero=numero,
         proveedor_id=datos.proveedor_id,
         numero_factura_proveedor=datos.numero_factura_proveedor,

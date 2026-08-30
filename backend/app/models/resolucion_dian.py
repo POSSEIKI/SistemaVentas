@@ -1,10 +1,11 @@
-﻿from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, Text, func
+from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, ForeignKey, Text, func
 from app.db.database import Base
 
 class ResolucionDian(Base):
     __tablename__ = "resoluciones_dian"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
     tipo_documento = Column(String(50), default="POS", nullable=False) # POS | FACTURA_ELECTRONICA | POS_ELECTRONICO
     numero_resolucion = Column(String(100), nullable=False)
     prefijo = Column(String(10), default="POS", nullable=False)

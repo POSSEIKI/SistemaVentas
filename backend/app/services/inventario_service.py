@@ -29,8 +29,9 @@ async def generar_excel_inventario_fisico(
     categoria_id: Optional[int] = None,
     q: Optional[str] = None,
     solo_con_stock: bool = False,
+    empresa_id: int = 1,
 ) -> io.BytesIO:
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     cfg = res_cfg.scalar_one_or_none()
     rubro = (cfg.rubro if cfg and cfg.rubro else "FARMACIA").upper()
     nombre_empresa = cfg.nombre if cfg and cfg.nombre else "SistemaVentas"
@@ -38,7 +39,7 @@ async def generar_excel_inventario_fisico(
     stmt = (
         select(Producto)
         .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
-        .where(Producto.activo == True)
+        .where(Producto.empresa_id == empresa_id, Producto.activo == True)
     )
     if categoria_id:
         stmt = stmt.where(Producto.categoria_id == categoria_id)
@@ -251,7 +252,8 @@ async def generar_excel_inventario_fisico(
 
 async def procesar_ajuste_inventario_fisico(
     contenido_bytes: bytes,
-    db: AsyncSession
+    db: AsyncSession,
+    empresa_id: int = 1,
 ) -> Dict[str, Any]:
     wb = openpyxl.load_workbook(filename=io.BytesIO(contenido_bytes), data_only=True)
     ws = wb.active
@@ -288,7 +290,11 @@ async def procesar_ajuste_inventario_fisico(
     if not col_id and not col_codigo and not col_nombre:
         raise ValueError("El archivo debe contener al menos la columna 'ID', 'CODIGO' o 'NOMBRE' del producto.")
 
-    stmt = select(Producto).options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida)).where(Producto.activo == True)
+    stmt = (
+        select(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
+        .where(Producto.empresa_id == empresa_id, Producto.activo == True)
+    )
     res = await db.execute(stmt)
     prods_all = res.scalars().unique().all()
     map_by_id = {p.id: p for p in prods_all}
@@ -435,6 +441,7 @@ async def analizar_factura_compra_excel(
     file_bytes: bytes,
     filename: str,
     db: AsyncSession,
+    empresa_id: int = 1,
 ) -> Dict[str, Any]:
     import csv
     import json
@@ -443,9 +450,9 @@ async def analizar_factura_compra_excel(
     import xml.etree.ElementTree as ET
 
     # 1. Configuración de rubro, margen predeterminado y modo de redondeo
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     cfg = res_cfg.scalar_one_or_none()
-    rubro = (cfg.rubro if cfg and cfg.rubro else "FARMACIA").upper()
+    rubro = (cfg.rubro if cfg and cfg.rubro else "COMERCIO_GENERAL").upper()
     margen_def = float(getattr(cfg, "margen_ganancia_predeterminado", 30.0) or 30.0)
     modo_redondeo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
 
@@ -465,11 +472,11 @@ async def analizar_factura_compra_excel(
         else:
             return float(round(val / 100.0) * 100)
 
-    # 2. Cargar todos los productos para cruce rápido
+    # 2. Cargar todos los productos de esta empresa para cruce rápido
     res_prods = await db.execute(
         select(Producto)
         .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
-        .where(Producto.activo == True)
+        .where(Producto.empresa_id == empresa_id, Producto.activo == True)
     )
     productos = res_prods.scalars().unique().all()
 

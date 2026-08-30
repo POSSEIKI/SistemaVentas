@@ -56,10 +56,16 @@ async def buscar_productos(
     categoria_id: Optional[int] = None,
     modo: Optional[str] = Query("NOMBRE", enum=["NOMBRE", "SUSTANCIA", "CODIGO"]),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     from sqlalchemy import case
     q_clean = q.strip()
+    empresa_id = current_user.empresa_id or 1
+
+    condiciones = [
+        Producto.empresa_id == empresa_id,
+        Producto.activo == True
+    ]
 
     if modo == "SUSTANCIA":
         # Búsqueda dedicada por principio activo / sustancia genérica
@@ -70,11 +76,10 @@ async def buscar_productos(
             (Producto.principio_activo.ilike(f"%{q_clean}%"), 4),
             else_=5
         )
-        condiciones = [
-            Producto.activo == True,
+        condiciones.extend([
             Producto.principio_activo.isnot(None),
             Producto.principio_activo.ilike(f"%{q_clean}%")
-        ]
+        ])
     elif modo == "CODIGO":
         # Búsqueda dedicada por código o códigos de barra (caja, blister, unidad)
         rank_expr = case(
@@ -86,8 +91,7 @@ async def buscar_productos(
             (Producto.codigo.ilike(f"{q_clean}%"), 6),
             else_=7
         )
-        condiciones = [
-            Producto.activo == True,
+        condiciones.append(
             or_(
                 Producto.codigo_barras == q_clean,
                 Producto.codigo_barras_blister == q_clean,
@@ -97,7 +101,7 @@ async def buscar_productos(
                 Producto.codigo_barras_blister.ilike(f"%{q_clean}%"),
                 Producto.codigo_barras_unidad.ilike(f"%{q_clean}%"),
             )
-        ]
+        )
     else:
         # Modo NOMBRE (Predeterminado): Prioridad a códigos exactos de barra/código y nombres
         rank_expr = case(
@@ -114,8 +118,7 @@ async def buscar_productos(
             (Producto.laboratorio.ilike(f"%{q_clean}%"), 11),
             else_=12
         )
-        condiciones = [
-            Producto.activo == True,
+        condiciones.append(
             or_(
                 Producto.nombre.ilike(f"%{q_clean}%"),
                 Producto.codigo.ilike(f"%{q_clean}%"),
@@ -125,7 +128,7 @@ async def buscar_productos(
                 Producto.principio_activo.ilike(f"%{q_clean}%"),
                 Producto.laboratorio.ilike(f"%{q_clean}%"),
             )
-        ]
+        )
 
     if categoria_id:
         condiciones.append(Producto.categoria_id == categoria_id)
@@ -197,16 +200,20 @@ def _es_categoria_afin(nombre_cat: str, rubro: str) -> bool:
 async def listar_categorias(
     solo_con_productos: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     from app.models.configuracion import ConfiguracionEmpresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    empresa_id = current_user.empresa_id or 1
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     cfg = res_cfg.scalar_one_or_none()
-    rubro = (cfg.rubro if cfg and cfg.rubro else "FERRETERIA").upper()
+    rubro = (cfg.rubro if cfg and cfg.rubro else "COMERCIO_GENERAL").upper()
 
     stmt = (
         select(Categoria.id, Categoria.nombre, func.count(Producto.id).label("total_productos"))
-        .outerjoin(Producto, (Producto.categoria_id == Categoria.id) & (Producto.activo == True))
+        .outerjoin(
+            Producto,
+            (Producto.categoria_id == Categoria.id) & (Producto.activo == True) & (Producto.empresa_id == empresa_id)
+        )
         .where(Categoria.activo == True)
         .group_by(Categoria.id, Categoria.nombre)
         .order_by(Categoria.nombre)
@@ -252,12 +259,14 @@ async def listar_unidades(db: AsyncSession = Depends(get_db), _=Depends(get_curr
     return [{"id": u.id, "nombre": u.nombre, "abreviatura": u.abreviatura} for u in result.scalars().all()]
 
 @router.get("/por-codigo/{codigo}")
-async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
+async def obtener_por_codigo(codigo: str, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
     cod_clean = codigo.strip()
+    empresa_id = current_user.empresa_id or 1
     stmt = (
         select(Producto)
         .options(joinedload(Producto.categoria), joinedload(Producto.unidad_medida))
         .where(
+            Producto.empresa_id == empresa_id,
             or_(
                 Producto.codigo == cod_clean,
                 Producto.codigo_barras == cod_clean,
@@ -294,9 +303,10 @@ async def listar_productos(
     pagina: int = Query(1, ge=1),
     limite: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    condiciones = []
+    empresa_id = current_user.empresa_id or 1
+    condiciones = [Producto.empresa_id == empresa_id]
     if activo is not None:
         condiciones.append(Producto.activo == activo)
     if categoria_id:
@@ -350,13 +360,15 @@ async def exportar_inventario_fisico(
     q: Optional[str] = None,
     solo_con_stock: Optional[bool] = False,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
     excel_stream = await generar_excel_inventario_fisico(
         db=db,
         categoria_id=categoria_id,
         q=q,
         solo_con_stock=solo_con_stock,
+        empresa_id=empresa_id,
     )
     from datetime import datetime
     fecha_slug = datetime.now().strftime("%Y%m%d_%H%M")
@@ -374,13 +386,15 @@ async def exportar_inventario_fisico(
 async def ajustar_inventario_fisico(
     archivo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
+    empresa_id = current_user.empresa_id or 1
     contenido = await archivo.read()
     try:
         resultado = await procesar_ajuste_inventario_fisico(
             contenido_bytes=contenido,
             db=db,
+            empresa_id=empresa_id,
         )
         return resultado
     except ValueError as ve:
@@ -392,15 +406,21 @@ async def ajustar_inventario_fisico(
 async def crear_producto(
     datos: ProductoCreate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    # Validar código único
-    result = await db.execute(select(Producto).where(Producto.codigo == datos.codigo.strip()))
+    empresa_id = current_user.empresa_id or 1
+    # Validar código único dentro de la misma empresa
+    result = await db.execute(
+        select(Producto).where(
+            Producto.empresa_id == empresa_id,
+            Producto.codigo == datos.codigo.strip()
+        )
+    )
     existente = result.scalar_one_or_none()
     if existente:
         raise HTTPException(
             status_code=400,
-            detail=f"Ya existe un producto con el código '{datos.codigo}' (ID: {existente.id}). Búscalo en la tabla para modificarlo o usa otro código."
+            detail=f"Ya existe un producto en tu negocio con el código '{datos.codigo}' (ID: {existente.id}). Búscalo en la tabla para modificarlo o usa otro código."
         )
 
     # Si es fraccionado y precio_venta no fue puesto, usar precio_caja o precio_unidad
@@ -409,6 +429,7 @@ async def crear_producto(
         if not p_data.get("precio_venta") and p_data.get("precio_caja"):
             p_data["precio_venta"] = p_data["precio_caja"]
 
+    p_data["empresa_id"] = empresa_id
     producto = Producto(**p_data)
     db.add(producto)
     await db.commit()
@@ -427,9 +448,15 @@ async def actualizar_producto(
     producto_id: int,
     datos: ProductoUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    result = await db.execute(select(Producto).where(Producto.id == producto_id))
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(Producto).where(
+            Producto.id == producto_id,
+            Producto.empresa_id == empresa_id
+        )
+    )
     producto = result.scalar_one_or_none()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -449,8 +476,14 @@ async def actualizar_producto(
     return _to_out(res.scalar_one())
 
 @router.delete("/{producto_id}")
-async def eliminar_producto(producto_id: int, db: AsyncSession = Depends(get_db), _=Depends(get_current_user)):
-    result = await db.execute(select(Producto).where(Producto.id == producto_id))
+async def eliminar_producto(producto_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    result = await db.execute(
+        select(Producto).where(
+            Producto.id == producto_id,
+            Producto.empresa_id == empresa_id
+        )
+    )
     producto = result.scalar_one_or_none()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
@@ -514,15 +547,17 @@ async def descargar_plantilla_excel(_=Depends(get_current_user)):
 async def importar_archivo_productos(
     archivo: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     from app.services.import_service import procesar_archivo_inventario
     contenido = await archivo.read()
+    empresa_id = current_user.empresa_id or 1
     try:
         resultado = await procesar_archivo_inventario(
             contenido=contenido,
             nombre_archivo=archivo.filename or "",
-            db=db
+            db=db,
+            empresa_id=empresa_id,
         )
         return resultado
     except ValueError as ve:
@@ -535,10 +570,11 @@ async def importar_archivo_productos(
 @router.post("/aplicar-redondeo-global")
 async def aplicar_redondeo_global(
     db: AsyncSession = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     from app.models.configuracion import ConfiguracionEmpresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+    empresa_id = current_user.empresa_id or 1
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
     cfg = res_cfg.scalar_one_or_none()
     modo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
 
@@ -558,7 +594,7 @@ async def aplicar_redondeo_global(
         else:
             return float(round(val / 100.0) * 100)
 
-    res_prods = await db.execute(select(Producto))
+    res_prods = await db.execute(select(Producto).where(Producto.empresa_id == empresa_id))
     prods = res_prods.scalars().all()
     modificados = 0
     for p in prods:

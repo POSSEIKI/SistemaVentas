@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Numeric, func
 from app.db.database import Base
 
 class ConfiguracionEmpresa(Base):
     __tablename__ = "configuracion_empresa"
-    id = Column(Integer, primary_key=True, default=1)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
     nombre = Column(String(200), default="Mi Empresa")
     nit = Column(String(20), default="")
     direccion = Column(String(300), default="")

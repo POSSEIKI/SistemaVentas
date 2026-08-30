@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_
 from typing import List, Optional, Dict, Any
@@ -168,7 +168,11 @@ async def listar_empresas_superadmin(
         admin_usr = res_u.scalars().first()
 
         # Configuración FE
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        res_cfg = await db.execute(
+            select(ConfiguracionEmpresa).where(
+                or_(ConfiguracionEmpresa.empresa_id == emp.id, ConfiguracionEmpresa.id == emp.id)
+            )
+        )
         cfg = res_cfg.scalar_one_or_none()
 
         lista.append({

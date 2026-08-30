@@ -22,8 +22,9 @@ class UnidadMedida(Base):
 class Producto(Base):
     __tablename__ = "productos"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    codigo = Column(String(50), unique=True, nullable=False, index=True)
-    codigo_barras = Column(String(50), unique=True, index=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=True, index=True)
+    codigo = Column(String(50), nullable=False, index=True)
+    codigo_barras = Column(String(50), index=True)
     codigo_barras_blister = Column(String(50), index=True)
     codigo_barras_unidad = Column(String(50), index=True)
     nombre = Column(String(200), nullable=False, index=True)

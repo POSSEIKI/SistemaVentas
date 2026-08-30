@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import json
 import httpx
 from datetime import datetime
@@ -112,15 +112,6 @@ def _mapear_medio_pago(forma_pago: str) -> str:
     return "10"
 
 async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, Any]:
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
-    cfg = res_cfg.scalar_one_or_none()
-    
-    if not cfg or not cfg.fe_habilitada:
-        return {"exito": False, "mensaje": "La Facturación Electrónica DIAN no está habilitada en los parámetros"}
-    
-    if not cfg.fe_client_id or not cfg.fe_client_secret:
-        return {"exito": False, "mensaje": "Faltan las credenciales de Factus (Client ID o Client Secret)"}
-    
     query = (
         select(Factura)
         .options(
@@ -134,6 +125,20 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
     
     if not factura:
         return {"exito": False, "mensaje": "Factura no encontrada"}
+
+    empresa_id = factura.empresa_id or 1
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(
+            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
+        )
+    )
+    cfg = res_cfg.scalar_one_or_none()
+    
+    if not cfg or not cfg.fe_habilitada:
+        return {"exito": False, "mensaje": "La Facturación Electrónica DIAN no está habilitada en los parámetros"}
+    
+    if not cfg.fe_client_id or not cfg.fe_client_secret:
+        return {"exito": False, "mensaje": "Faltan las credenciales de Factus (Client ID o Client Secret)"}
     
     if factura.dian_estado == "VALIDADA" and factura.cufe:
         return {

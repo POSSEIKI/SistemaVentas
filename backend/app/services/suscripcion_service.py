@@ -197,21 +197,36 @@ async def registrar_nueva_empresa_y_admin(datos: RegistroEmpresaRequest, db: Asy
     )
     db.add(suscripcion)
 
-    # 8. Crear o actualizar Configuración Empresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
-    cfg = res_cfg.scalar_one_or_none()
-    if not cfg:
-        cfg = ConfiguracionEmpresa(id=1)
-        db.add(cfg)
-    cfg.nombre = datos.empresa_nombre
-    cfg.nit = datos.empresa_nit or ""
-    cfg.ciudad = datos.empresa_ciudad or ""
-    cfg.telefono = datos.empresa_telefono or ""
-    cfg.direccion = datos.empresa_direccion or ""
-    cfg.rubro = datos.rubro or "FARMACIA"
-    cfg.primer_inicio = False
+    # 8. Crear Configuración Empresa aislada para este tenant
+    cfg = ConfiguracionEmpresa(
+        empresa_id=empresa.id,
+        nombre=datos.empresa_nombre,
+        nit=datos.empresa_nit or "",
+        ciudad=datos.empresa_ciudad or "",
+        telefono=datos.empresa_telefono or "",
+        direccion=datos.empresa_direccion or "",
+        rubro=datos.rubro or "COMERCIO_GENERAL",
+        pais="Colombia",
+        zona_horaria="America/Bogota",
+        primer_inicio=False,
+    )
+    db.add(cfg)
 
-    # 8.1 Sembrar categorías pertinentes al rubro de la nueva empresa
+    # 8.1 Crear Cliente Mostrador inicial para la nueva empresa
+    from app.models.cliente import Cliente
+    cliente_mostrador = Cliente(
+        empresa_id=empresa.id,
+        nombre='CLIENTE MOSTRADOR (CONSUMIDOR FINAL)',
+        nit='222222222222',
+        tipo_doc='CC',
+        direccion='Mostrador',
+        telefono='0000000',
+        email='',
+        activo=True
+    )
+    db.add(cliente_mostrador)
+
+    # 8.2 Sembrar categorías pertinentes al rubro de la nueva empresa
     from app.models.producto import Categoria
     CATEGORIAS_RUBRO_MAP = {
         "FARMACIA": ["Medicamentos", "Analgésicos y Antiinflamatorios", "Antibióticos", "Vitaminas y Suplementos", "Cuidado Personal y Aseo", "Dispositivos Médicos", "Maternidad y Bebés", "Primeros Auxilios", "General"],
