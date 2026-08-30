@@ -72,7 +72,7 @@ export default function AppLayout() {
   const fechaStr = hora.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })
 
   return (
-    <div className="min-h-screen bg-dark-900 flex flex-col">
+    <div className="h-screen max-h-screen h-[100dvh] overflow-hidden bg-dark-900 flex flex-col">
       {/* ── Header Desktop ────────────────────────────────────── */}
       <header className="hidden md:flex items-center justify-between
                          bg-dark-800 border-b border-dark-700 px-6 py-3 flex-shrink-0">
@@ -176,34 +176,34 @@ export default function AppLayout() {
       </header>
 
       {/* ── Contenido Principal con Persistencia de Vistas (Keep-Alive) ─── */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden w-full max-w-full pb-20 md:pb-0 relative flex flex-col min-w-0">
+      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full max-w-full pb-24 md:pb-8 relative flex flex-col min-w-0">
         {visitedTabs.has('/ventas') && (
-          <div className={activeTab === '/ventas' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/ventas' ? 'h-full flex-1 flex flex-col w-full max-w-full min-w-0 overflow-hidden' : 'hidden'}>
             <VentasPage />
           </div>
         )}
         {visitedTabs.has('/compras') && (
-          <div className={activeTab === '/compras' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/compras' ? 'w-full max-w-full min-w-0 flex flex-col' : 'hidden'}>
             <ComprasPage />
           </div>
         )}
         {visitedTabs.has('/inventario') && (
-          <div className={activeTab === '/inventario' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/inventario' ? 'w-full max-w-full min-w-0 flex flex-col' : 'hidden'}>
             <InventarioPage />
           </div>
         )}
         {visitedTabs.has('/reportes') && (
-          <div className={activeTab === '/reportes' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/reportes' ? 'w-full max-w-full min-w-0 flex flex-col' : 'hidden'}>
             <ReportesPage />
           </div>
         )}
         {visitedTabs.has('/parametros') && (
-          <div className={activeTab === '/parametros' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/parametros' ? 'w-full max-w-full min-w-0 flex flex-col' : 'hidden'}>
             <ParametrosPage />
           </div>
         )}
         {visitedTabs.has('/super-admin') && (
-          <div className={activeTab === '/super-admin' ? 'flex-1 flex flex-col w-full max-w-full min-w-0' : 'hidden'}>
+          <div className={activeTab === '/super-admin' ? 'w-full max-w-full min-w-0 flex flex-col' : 'hidden'}>
             <SuperAdminPage />
           </div>
         )}
