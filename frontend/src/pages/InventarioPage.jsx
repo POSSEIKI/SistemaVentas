@@ -86,10 +86,11 @@ export default function InventarioPage() {
   const [ajustandoFisico, setAjustandoFisico] = useState(false)
   const [resumenAjuste, setResumenAjuste] = useState(null)
   const [filtroDesfase, setFiltroDesfase] = useState('TODOS') // TODOS | SOBRANTES | FALTANTES
+  const [filtroStock, setFiltroStock] = useState('TODOS') // TODOS | CON_STOCK | SIN_STOCK | STOCK_BAJO
   const fileAjusteRef = useRef(null)
   const fileInputRef = useRef(null)
 
-  const cargarDatos = async (busq = busqueda, cat = catFiltro, pag = pagina, lim = limite) => {
+  const cargarDatos = async (busq = busqueda, cat = catFiltro, stk = filtroStock, pag = pagina, lim = limite) => {
     setCargando(true)
     try {
       const params = {
@@ -99,17 +100,21 @@ export default function InventarioPage() {
       }
       if (cat) params.categoria_id = parseInt(cat)
       if (busq && busq.trim()) params.q = busq.trim()
+      if (stk && stk !== 'TODOS') params.filtro_stock = stk
 
       const [resProds, cats, unis, cfg] = await Promise.all([
-        productosApi.listar(params),
-        productosApi.categorias(),
-        productosApi.unidades(),
+        productosApi.listar(params).catch(err => {
+          console.error('Error listar productos:', err)
+          return { items: [], total: 0, pagina: 1, total_paginas: 1 }
+        }),
+        productosApi.categorias().catch(() => []),
+        productosApi.unidades().catch(() => []),
         configApi.get().catch(() => null),
       ])
 
       if (resProds && resProds.items) {
         setProductos(resProds.items)
-        setTotalProductos(resProds.total)
+        setTotalProductos(resProds.total ?? resProds.items.length)
         setTotalPaginas(resProds.total_paginas || 1)
         setPagina(resProds.pagina || pag)
       } else if (Array.isArray(resProds)) {
@@ -118,8 +123,8 @@ export default function InventarioPage() {
         setTotalPaginas(1)
       }
 
-      setCategorias(cats)
-      setUnidades(unis)
+      setCategorias(Array.isArray(cats) ? cats : [])
+      setUnidades(Array.isArray(unis) ? unis : [])
 
       if (cfg) {
         if (cfg.margen_ganancia_predeterminado !== undefined && cfg.margen_ganancia_predeterminado !== null) {
@@ -128,15 +133,15 @@ export default function InventarioPage() {
         }
         if (cfg.modo_redondeo) setModoRedondeo(cfg.modo_redondeo)
       }
-    } catch {
-      toast.error('Error cargando inventario')
+    } catch (err) {
+      toast.error('Error al actualizar catálogo de inventario')
     } finally {
       setCargando(false)
     }
   }
 
   useEffect(() => {
-    cargarDatos('', '', 1, 25)
+    cargarDatos('', '', 'TODOS', 1, 25)
   }, [])
 
   const handleBusquedaChange = (val) => {
@@ -144,27 +149,33 @@ export default function InventarioPage() {
     setPagina(1)
     clearTimeout(window._invSearchTimer)
     window._invSearchTimer = setTimeout(() => {
-      cargarDatos(val, catFiltro, 1, limite)
+      cargarDatos(val, catFiltro, filtroStock, 1, limite)
     }, 300)
   }
 
   const handleCategoriaChange = (val) => {
     setCatFiltro(val)
     setPagina(1)
-    cargarDatos(busqueda, val, 1, limite)
+    cargarDatos(busqueda, val, filtroStock, 1, limite)
+  }
+
+  const handleFiltroStockChange = (nuevoFiltro) => {
+    setFiltroStock(nuevoFiltro)
+    setPagina(1)
+    cargarDatos(busqueda, catFiltro, nuevoFiltro, 1, limite)
   }
 
   const cambiarPagina = (nuevaPag) => {
     if (nuevaPag < 1 || nuevaPag > totalPaginas) return
     setPagina(nuevaPag)
-    cargarDatos(busqueda, catFiltro, nuevaPag, limite)
+    cargarDatos(busqueda, catFiltro, filtroStock, nuevaPag, limite)
   }
 
   const cambiarLimite = (nuevoLim) => {
     const lim = parseInt(nuevoLim)
     setLimite(lim)
     setPagina(1)
-    cargarDatos(busqueda, catFiltro, 1, lim)
+    cargarDatos(busqueda, catFiltro, filtroStock, 1, lim)
   }
 
   // Generador de páginas numeradas
@@ -570,38 +581,77 @@ export default function InventarioPage() {
         </div>
       </div>
 
-      {/* ── Barra de Búsqueda y Filtro ─────────────────────────────── */}
-      <div className="flex gap-2 sm:gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
-          <input
-            className="input-field pl-9 py-2 text-xs"
-            value={busqueda}
-            onChange={e => handleBusquedaChange(e.target.value)}
-            placeholder="Buscar por nombre, código, barra, principio activo..."
-          />
-          {busqueda && (
-            <button
-              onClick={() => { setBusqueda(''); setPagina(1); cargarDatos('', catFiltro, 1, limite) }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
-            >
-              <X size={14} />
-            </button>
-          )}
+      {/* ── Barra de Búsqueda y Filtros ─────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex gap-2 sm:gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-48">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
+            <input
+              className="input-field pl-9 py-2 text-xs"
+              value={busqueda}
+              onChange={e => handleBusquedaChange(e.target.value)}
+              placeholder="Buscar por nombre, código, barra, principio activo..."
+            />
+            {busqueda && (
+              <button
+                onClick={() => { setBusqueda(''); setPagina(1); cargarDatos('', catFiltro, filtroStock, 1, limite) }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Selector de Categorías */}
+          <select
+            className="input-field w-auto py-2 text-xs font-medium"
+            value={catFiltro}
+            onChange={e => handleCategoriaChange(e.target.value)}
+          >
+            <option value="">Todas las categorías ({categorias.length})</option>
+            {categorias.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.nombre} ({c.total_productos || 0})
+              </option>
+            ))}
+          </select>
+
+          {/* Selector de Existencias / Stock */}
+          <select
+            className="input-field w-auto py-2 text-xs font-medium bg-dark-800 border-dark-600 text-white"
+            value={filtroStock}
+            onChange={e => handleFiltroStockChange(e.target.value)}
+          >
+            <option value="TODOS">📦 Todo el Catálogo (Con o Sin Stock)</option>
+            <option value="CON_STOCK">🟢 Solo con Existencias (Stock &gt; 0)</option>
+            <option value="SIN_STOCK">🔴 Agotados / Sin Stock (Stock = 0)</option>
+            <option value="STOCK_BAJO">⚠️ Stock Bajo / Alerta Mínima</option>
+          </select>
         </div>
 
-        <select
-          className="input-field w-auto py-2 text-xs font-medium"
-          value={catFiltro}
-          onChange={e => handleCategoriaChange(e.target.value)}
-        >
-          <option value="">Todas las categorías ({totalProductos})</option>
-          {categorias.map(c => (
-            <option key={c.id} value={c.id}>
-              {c.nombre} ({c.total_productos || 0})
-            </option>
+        {/* Píldoras rápidas de filtrado de stock */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+          <span className="text-[11px] text-dark-500 mr-1 font-medium">Existencias:</span>
+          {[
+            { id: 'TODOS', label: 'Todos (Con y Sin Stock)' },
+            { id: 'CON_STOCK', label: '🟢 Con Stock' },
+            { id: 'SIN_STOCK', label: '🔴 Sin Stock / Agotados' },
+            { id: 'STOCK_BAJO', label: '⚠️ Stock Bajo' },
+          ].map(f => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => handleFiltroStockChange(f.id)}
+              className={`px-2.5 py-1 text-[11px] rounded-lg border font-semibold transition-all cursor-pointer ${
+                filtroStock === f.id
+                  ? 'bg-primary-500/20 border-primary-400 text-primary-300 shadow-sm'
+                  : 'bg-dark-900/60 border-dark-700 text-dark-400 hover:bg-dark-800 hover:text-dark-200'
+              }`}
+            >
+              {f.label}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       {/* ── Sub-header: Estado de Búsqueda y Paginación Rápida Superior ── */}

@@ -202,6 +202,7 @@ async def listar_categorias(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    empresa_id = current_user.empresa_id or 1
     from app.models.configuracion import ConfiguracionEmpresa
     res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
     cfg = res_cfg.scalars().first()
@@ -304,6 +305,7 @@ async def listar_productos(
     categoria_id: Optional[int] = None,
     q: Optional[str] = None,
     activo: Optional[bool] = True,
+    filtro_stock: Optional[str] = Query(None, enum=["TODOS", "CON_STOCK", "SIN_STOCK", "STOCK_BAJO"]),
     pagina: int = Query(1, ge=1),
     limite: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
@@ -315,6 +317,13 @@ async def listar_productos(
         condiciones.append(Producto.activo == activo)
     if categoria_id:
         condiciones.append(Producto.categoria_id == categoria_id)
+    if filtro_stock == "CON_STOCK":
+        condiciones.append(Producto.stock_actual > 0)
+    elif filtro_stock == "SIN_STOCK":
+        condiciones.append(Producto.stock_actual <= 0)
+    elif filtro_stock == "STOCK_BAJO":
+        condiciones.append(Producto.stock_actual <= Producto.stock_minimo)
+
     if q and q.strip():
         condiciones.append(
             or_(
