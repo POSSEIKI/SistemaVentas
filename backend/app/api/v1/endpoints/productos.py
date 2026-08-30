@@ -203,9 +203,11 @@ async def listar_categorias(
     current_user=Depends(get_current_user)
 ):
     from app.models.configuracion import ConfiguracionEmpresa
-    empresa_id = current_user.empresa_id or 1
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-    cfg = res_cfg.scalar_one_or_none()
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     rubro = (cfg.rubro if cfg and cfg.rubro else "COMERCIO_GENERAL").upper()
 
     stmt = (
@@ -632,11 +634,12 @@ async def aplicar_redondeo_global(
     from app.models.configuracion import ConfiguracionEmpresa
     empresa_id = current_user.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     modo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"
 
     def _redondear(val: float, modo_r: str) -> float:

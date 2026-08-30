@@ -191,13 +191,13 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
     if not f:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
-    empresa_id = f.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     tz = await _obtener_zona_horaria(db, empresa_id)
 
     fecha_dt = f.fecha
@@ -329,11 +329,12 @@ async def crear_factura(
 
     # Si la empresa tiene habilitada la Facturación Electrónica DIAN / Factus, emitir automáticamente
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     if cfg and cfg.fe_habilitada and cfg.fe_client_id and cfg.fe_client_secret:
         try:
             from app.services.factus_service import enviar_factura_a_dian

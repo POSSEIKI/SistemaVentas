@@ -31,8 +31,11 @@ async def generar_excel_inventario_fisico(
     solo_con_stock: bool = False,
     empresa_id: int = 1,
 ) -> io.BytesIO:
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-    cfg = res_cfg.scalar_one_or_none()
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     rubro = (cfg.rubro if cfg and cfg.rubro else "FARMACIA").upper()
     nombre_empresa = cfg.nombre if cfg and cfg.nombre else "SistemaVentas"
 
@@ -450,8 +453,11 @@ async def analizar_factura_compra_excel(
     import xml.etree.ElementTree as ET
 
     # 1. Configuración de rubro, margen predeterminado y modo de redondeo
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-    cfg = res_cfg.scalar_one_or_none()
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     rubro = (cfg.rubro if cfg and cfg.rubro else "COMERCIO_GENERAL").upper()
     margen_def = float(getattr(cfg, "margen_ganancia_predeterminado", 30.0) or 30.0)
     modo_redondeo = getattr(cfg, "modo_redondeo", "CENTENA_100") or "CENTENA_100"

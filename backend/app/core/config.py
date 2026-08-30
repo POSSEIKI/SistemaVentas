@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ENVIRONMENT: str = "production"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/sistema_ventas"
-    SECRET_KEY: str = secrets.token_hex(32)
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "factur_aap_production_jwt_secret_key_2026_seiki_permanent")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30

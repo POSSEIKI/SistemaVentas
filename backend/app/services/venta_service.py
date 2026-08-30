@@ -50,8 +50,11 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
         numero = f"{prefijo}{str(consecutivo).zfill(6)}"
     else:
         # Fallback a configuración general de esta empresa
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-        config = res_cfg.scalar_one_or_none()
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+        config = res_cfg.scalars().first()
+        if not config and empresa_id == 1:
+            res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+            config = res_cfg.scalars().first()
         prefijo = config.factura_prefijo if config else "FV"
         numero = await _siguiente_numero(db, prefijo, Factura, "numero", empresa_id)
 

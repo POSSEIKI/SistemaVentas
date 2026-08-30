@@ -352,7 +352,8 @@ export default function ParametrosEmpresa() {
   }
 
   return (
-    <form onSubmit={guardar} className="space-y-3.5 sm:space-y-5 w-full max-w-full min-w-0">
+    <>
+      <form onSubmit={guardar} className="space-y-3.5 sm:space-y-5 w-full max-w-full min-w-0">
       {/* ── Encabezado ────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-dark-700 w-full min-w-0">
         <div>
@@ -1456,230 +1457,208 @@ export default function ParametrosEmpresa() {
           <span>{guardando ? 'Guardando...' : 'Guardar Todos los Cambios'}</span>
         </button>
       </div>
+    </form>
 
-      {/* ── MODAL: REGISTRAR / RENOVAR RESOLUCIÓN DIAN ───────────── */}
-      {modalResolucion && (
+    {/* ── MODAL: REGISTRAR / RENOVAR RESOLUCIÓN DIAN ───────────── */}
+    {modalResolucion && (
+      <div
+        className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+        onClick={() => setModalResolucion(null)}
+      >
         <div
-          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setModalResolucion(null)}
+          className="bg-dark-800 rounded-2xl w-full max-w-xl p-5 border border-dark-600 shadow-2xl space-y-4 my-8"
+          onClick={e => e.stopPropagation()}
         >
-          <div
-            className="bg-dark-800 rounded-2xl w-full max-w-xl p-5 border border-dark-600 shadow-2xl space-y-4 my-8"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header del Modal */}
-            <div className="flex items-center justify-between border-b border-dark-700 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-400 flex items-center justify-center shadow-lg">
-                  <Award size={22} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold text-base">
-                    {modalResolucion.id ? 'Editar Resolución DIAN' : 'Registrar / Renovar Resolución DIAN'}
-                  </h3>
-                  <p className="text-dark-400 text-xs">Formulario 1876 de Autorización de Numeración</p>
-                </div>
+          {/* Header del Modal */}
+          <div className="flex items-center justify-between border-b border-dark-700 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-400 flex items-center justify-center shadow-lg">
+                <Award size={22} />
               </div>
-              <button
-                type="button"
-                onClick={() => setModalResolucion(null)}
-                className="text-dark-500 hover:text-white p-1"
-              >
-                ✕
-              </button>
+              <div>
+                <h3 className="text-white font-bold text-base">
+                  {modalResolucion.id ? 'Editar Resolución DIAN' : 'Registrar / Renovar Resolución DIAN'}
+                </h3>
+                <p className="text-dark-400 text-xs">Formulario 1876 de Autorización de Numeración</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setModalResolucion(null)}
+              className="text-dark-500 hover:text-white p-1"
+            >
+              ✕
+            </button>
+          </div>
 
-            {/* Formulario de la Resolución */}
-            <form onSubmit={handleGuardarResolucionModal} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-dark-400 font-semibold mb-1">
-                    N° de Resolución / Formulario DIAN 1876 *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="input-field py-2 text-xs font-mono font-bold"
-                    placeholder="Ej: 18764000001234"
-                    value={modalResolucion.numero_resolucion}
-                    onChange={e => setModalResolucion({ ...modalResolucion, numero_resolucion: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-dark-400 font-semibold mb-1">
-                    Prefijo Autorizado *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="input-field py-2 text-xs font-mono font-bold text-primary-300 uppercase"
-                    placeholder="Ej: POS o FV"
-                    value={modalResolucion.prefijo}
-                    onChange={e => setModalResolucion({ ...modalResolucion, prefijo: e.target.value.toUpperCase() })}
-                  />
-                </div>
-              </div>
-
-              {/* Rango Desde / Hasta y Consecutivo Inicial */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-dark-400 font-semibold mb-1">
-                    Rango Desde *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    className="input-field py-2 text-xs font-mono"
-                    value={modalResolucion.rango_desde}
-                    onChange={e => setModalResolucion({ ...modalResolucion, rango_desde: parseInt(e.target.value) || 1 })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-dark-400 font-semibold mb-1">
-                    Rango Hasta *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    className="input-field py-2 text-xs font-mono"
-                    value={modalResolucion.rango_hasta}
-                    onChange={e => setModalResolucion({ ...modalResolucion, rango_hasta: parseInt(e.target.value) || 10000 })}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-dark-400 font-semibold mb-1">
-                    Consecutivo Inicial / Actual:
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    className="input-field py-2 text-xs font-mono text-emerald-400 font-bold"
-                    placeholder="0 = Iniciar desde rango"
-                    value={modalResolucion.consecutivo_actual}
-                    onChange={e => setModalResolucion({ ...modalResolucion, consecutivo_actual: parseInt(e.target.value) || 0 })}
-                  />
-                  <span className="text-[10px] text-dark-500 block mt-0.5">La siguiente venta será #{modalResolucion.consecutivo_actual + 1}</span>
-                </div>
-              </div>
-
-              {/* Fechas y Vigencia */}
-              <div className="bg-dark-900/80 p-3.5 rounded-xl border border-dark-700 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-dark-400 font-semibold mb-1">
-                      Fecha de Expedición *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      className="input-field py-1.5 text-xs font-mono"
-                      value={modalResolucion.fecha_expedicion}
-                      onChange={e => {
-                        const fExp = e.target.value
-                        // Recalcular vencimiento con vigencia_meses
-                        try {
-                          const d = new Date(fExp)
-                          d.setMonth(d.getMonth() + (modalResolucion.vigencia_meses || 24))
-                          const y = d.getFullYear()
-                          const m = String(d.getMonth() + 1).padStart(2, '0')
-                          const day = String(d.getDate()).padStart(2, '0')
-                          setModalResolucion({
-                            ...modalResolucion,
-                            fecha_expedicion: fExp,
-                            fecha_vencimiento: `${y}-${m}-${day}`
-                          })
-                        } catch {
-                          setModalResolucion({ ...modalResolucion, fecha_expedicion: fExp })
-                        }
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-dark-400 font-semibold mb-1">
-                      Vigencia en Meses:
-                    </label>
-                    <div className="grid grid-cols-3 gap-1">
-                      {[12, 18, 24].map(meses => (
-                        <button
-                          key={meses}
-                          type="button"
-                          onClick={() => {
-                            try {
-                              const d = new Date(modalResolucion.fecha_expedicion || new Date())
-                              d.setMonth(d.getMonth() + meses)
-                              const y = d.getFullYear()
-                              const m = String(d.getMonth() + 1).padStart(2, '0')
-                              const day = String(d.getDate()).padStart(2, '0')
-                              setModalResolucion({
-                                ...modalResolucion,
-                                vigencia_meses: meses,
-                                fecha_vencimiento: `${y}-${m}-${day}`
-                              })
-                            } catch {
-                              setModalResolucion({ ...modalResolucion, vigencia_meses: meses })
-                            }
-                          }}
-                          className={`py-1.5 rounded-lg text-xs font-bold border ${
-                            modalResolucion.vigencia_meses === meses
-                              ? 'bg-amber-950 border-amber-500 text-amber-300'
-                              : 'bg-dark-800 border-dark-700 text-dark-400'
-                          }`}
-                        >
-                          {meses}m
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-dark-400 font-semibold mb-1">
-                      Fecha de Vencimiento *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      className="input-field py-1.5 text-xs font-mono font-bold text-white"
-                      value={modalResolucion.fecha_vencimiento}
-                      onChange={e => setModalResolucion({ ...modalResolucion, fecha_vencimiento: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Casilla de Activa */}
-              <div className="bg-dark-900/60 p-3 rounded-xl border border-dark-700 flex items-center justify-between">
-                <div>
-                  <strong className="text-white text-xs block">Establecer como Resolución Activa Vigente</strong>
-                  <p className="text-dark-500 text-[11px]">
-                    Si marcas esta casilla, la resolución actual anterior pasará automáticamente al archivo histórico y la nueva empezará a regir.
-                  </p>
-                </div>
+          {/* Formulario de la Resolución */}
+          <form onSubmit={handleGuardarResolucionModal} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-dark-400 font-semibold mb-1">
+                  N° de Resolución / Formulario DIAN 1876 *
+                </label>
                 <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded text-primary-600 bg-dark-800 border-dark-700 cursor-pointer"
-                  checked={!!modalResolucion.activa}
-                  onChange={e => setModalResolucion({ ...modalResolucion, activa: e.target.checked })}
+                  type="text"
+                  required
+                  className="input-field py-2 text-xs font-mono font-bold"
+                  placeholder="Ej: 18764000001234"
+                  value={modalResolucion.numero_resolucion}
+                  onChange={e => setModalResolucion({ ...modalResolucion, numero_resolucion: e.target.value })}
                 />
               </div>
 
-              {/* Botones del Modal */}
-              <div className="flex gap-3 pt-2 border-t border-dark-700">
-                <button
-                  type="button"
-                  onClick={() => setModalResolucion(null)}
-                  className="btn-secondary flex-1 py-2.5 text-xs font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={guardandoResolucion}
+              <div>
+                <label className="block text-dark-400 font-semibold mb-1">
+                  Prefijo Autorizado
+                </label>
+                <input
+                  type="text"
+                  className="input-field py-2 text-xs font-mono font-bold uppercase"
+                  placeholder="Ej: POS"
+                  maxLength={10}
+                  value={modalResolucion.prefijo}
+                  onChange={e => setModalResolucion({ ...modalResolucion, prefijo: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-dark-400 font-semibold mb-1">
+                  Rango Desde *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  className="input-field py-2 text-xs font-mono font-bold"
+                  value={modalResolucion.rango_desde}
+                  onChange={e => setModalResolucion({ ...modalResolucion, rango_desde: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-dark-400 font-semibold mb-1">
+                  Rango Hasta *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  className="input-field py-2 text-xs font-mono font-bold"
+                  value={modalResolucion.rango_hasta}
+                  onChange={e => setModalResolucion({ ...modalResolucion, rango_hasta: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-dark-400 font-semibold mb-1">
+                  Consecutivo Actual
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  className="input-field py-2 text-xs font-mono font-bold text-amber-400"
+                  placeholder="Último emitido"
+                  value={modalResolucion.consecutivo_actual || ''}
+                  onChange={e => setModalResolucion({ ...modalResolucion, consecutivo_actual: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+
+            {/* Fechas de Vigencia */}
+            <div className="p-3 bg-dark-900/60 rounded-xl border border-dark-700 space-y-3">
+              <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
+                Periodo de Vigencia de la Resolución
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-dark-400 font-semibold mb-1">
+                    Fecha de Expedición *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="input-field py-1.5 text-xs font-mono font-bold text-white"
+                    value={modalResolucion.fecha_expedicion}
+                    onChange={e => setModalResolucion({ ...modalResolucion, fecha_expedicion: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-dark-400 font-semibold mb-1">
+                    Vigencia (Meses)
+                  </label>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[6, 12, 18, 24].map(meses => (
+                      <button
+                        key={meses}
+                        type="button"
+                        onClick={() => {
+                          try {
+                            const exp = new Date(modalResolucion.fecha_expedicion || new Date())
+                            exp.setMonth(exp.getMonth() + meses)
+                            const y = exp.getFullYear()
+                            const m = String(exp.getMonth() + 1).padStart(2, '0')
+                            const day = String(exp.getDate()).padStart(2, '0')
+                            setModalResolucion({
+                              ...modalResolucion,
+                              vigencia_meses: meses,
+                              fecha_vencimiento: `${y}-${m}-${day}`
+                            })
+                          } catch {
+                            setModalResolucion({ ...modalResolucion, vigencia_meses: meses })
+                          }
+                        }}
+                        className={`py-1.5 rounded-lg text-xs font-bold border ${
+                          modalResolucion.vigencia_meses === meses
+                            ? 'bg-amber-950 border-amber-500 text-amber-300'
+                            : 'bg-dark-800 border-dark-700 text-dark-400'
+                        }`}
+                      >
+                        {meses}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-dark-400 font-semibold mb-1">
+                    Fecha de Vencimiento *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    className="input-field py-1.5 text-xs font-mono font-bold text-white"
+                    value={modalResolucion.fecha_vencimiento}
+                    onChange={e => setModalResolucion({ ...modalResolucion, fecha_vencimiento: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Casilla de Activa */}
+            <div className="bg-dark-900/60 p-3 rounded-xl border border-dark-700 flex items-center justify-between">
+              <div>
+                <strong className="text-white text-xs block">Establecer como Resolución Activa Vigente</strong>
+                <p className="text-dark-500 text-[11px]">
+                  Si marcas esta casilla, la resolución actual anterior pasará automáticamente al archivo histórico y la nueva empezará a regir.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded text-primary-600 bg-dark-800 border-dark-700 cursor-pointer"
+                checked={!!modalResolucion.activa}
+                onChange={e => setModalResolucion({ ...modalResolucion, activa: e.target.checked })}
+              />
+            </div>
+
+            {/* Botones del Modal */}
+            <div className="flex gap-3 pt-2 border-t border-dark-700">
+              <button
+                type="button"
+                onClick={() => setModalResolucion(null)}
                   className="btn-primary flex-1 py-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-500 shadow-lg flex items-center justify-center gap-1.5"
                 >
                   {guardandoResolucion ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
@@ -1690,7 +1669,7 @@ export default function ParametrosEmpresa() {
           </div>
         </div>
       )}
-    </form>
+    </>
   )
 }
 

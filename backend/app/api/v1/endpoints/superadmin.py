@@ -169,11 +169,12 @@ async def listar_empresas_superadmin(
 
         # Configuración FE
         res_cfg = await db.execute(
-            select(ConfiguracionEmpresa).where(
-                or_(ConfiguracionEmpresa.empresa_id == emp.id, ConfiguracionEmpresa.id == emp.id)
-            )
+            select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == emp.id).order_by(ConfiguracionEmpresa.id.desc())
         )
-        cfg = res_cfg.scalar_one_or_none()
+        cfg = res_cfg.scalars().first()
+        if not cfg and emp.id == 1:
+            res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+            cfg = res_cfg.scalars().first()
 
         lista.append({
             "id": emp.id,

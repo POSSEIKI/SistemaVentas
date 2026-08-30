@@ -105,11 +105,12 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
     # Obtener rubro de empresa
     empresa_id = usuario.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     rubro = cfg.rubro if cfg else "COMERCIO_GENERAL"
 
     access_token = create_access_token({"sub": usuario.username})

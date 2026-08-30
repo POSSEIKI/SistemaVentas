@@ -16,30 +16,44 @@ def _safe_float(val, default=0.0) -> float:
     except (ValueError, TypeError):
         return default
 
-@router.get("/empresa")
-async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
-    empresa_id = current_user.empresa_id or 1
-    result = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+async def _obtener_config_empresa(db: AsyncSession, empresa_id: int) -> ConfiguracionEmpresa:
+    # 1. Buscar prioritariamente por empresa_id
+    res = await db.execute(
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    config = result.scalar_one_or_none()
+    config = res.scalars().first()
+
+    # 2. Si no se encuentra y empresa_id == 1, buscar por id == 1
+    if not config and empresa_id == 1:
+        res = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        config = res.scalars().first()
+
+    # 3. Si no existe, crearla con los datos de la empresa
     if not config:
-        # Si no existe, crearla con los datos de la empresa
         res_emp = await db.execute(select(Empresa).where(Empresa.id == empresa_id))
-        emp = res_emp.scalar_one_or_none()
+        emp = res_emp.scalars().first()
         config = ConfiguracionEmpresa(
             empresa_id=empresa_id,
-            nombre=emp.nombre if emp else "Mi Empresa",
+            nombre=emp.nombre if emp and emp.nombre else "Mi Empresa",
             nit=emp.nit if emp and emp.nit else "",
             rubro=emp.rubro if emp and emp.rubro else "COMERCIO_GENERAL",
+            telefono=emp.telefono if emp and emp.telefono else "",
+            ciudad=emp.ciudad if emp and emp.ciudad else "",
+            direccion=emp.direccion if emp and emp.direccion else "",
+            email=emp.email if emp and emp.email else "",
             pais="Colombia",
             zona_horaria="America/Bogota"
         )
         db.add(config)
         await db.commit()
         await db.refresh(config)
+
+    return config
+
+@router.get("/empresa")
+async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Depends(get_current_user)):
+    empresa_id = current_user.empresa_id or 1
+    config = await _obtener_config_empresa(db, empresa_id)
 
     return {
         "nombre": config.nombre or "Mi Empresa",
@@ -87,15 +101,7 @@ async def actualizar_configuracion(
     current_user=Depends(require_admin),
 ):
     empresa_id = current_user.empresa_id or 1
-    result = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
-    )
-    config = result.scalar_one_or_none()
-    if not config:
-        config = ConfiguracionEmpresa(empresa_id=empresa_id)
-        db.add(config)
+    config = await _obtener_config_empresa(db, empresa_id)
 
     # Sincronizar campos principales con la tabla Empresa si existe
     if current_user.empresa_id:

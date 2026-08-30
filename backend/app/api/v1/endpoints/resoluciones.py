@@ -97,8 +97,11 @@ async def crear_resolucion(
     
     # Si quedó activa, sincronizar con ConfiguracionEmpresa de esta empresa
     if resolucion.activa:
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-        cfg = res_cfg.scalar_one_or_none()
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+        cfg = res_cfg.scalars().first()
+        if not cfg and empresa_id == 1:
+            res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+            cfg = res_cfg.scalars().first()
         if cfg:
             cfg.resolucion_dian = resolucion.texto_resolucion
             cfg.factura_prefijo = resolucion.prefijo
@@ -138,8 +141,11 @@ async def activar_resolucion(
     await db.refresh(resolucion)
     
     # Sincronizar en empresa
-    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-    cfg = res_cfg.scalar_one_or_none()
+    res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     if cfg:
         cfg.resolucion_dian = resolucion.texto_resolucion or _generar_texto_legal(resolucion)
         cfg.factura_prefijo = resolucion.prefijo
@@ -185,8 +191,11 @@ async def actualizar_resolucion(
     await db.refresh(resolucion)
     
     if resolucion.activa:
-        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id))
-        cfg = res_cfg.scalar_one_or_none()
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc()))
+        cfg = res_cfg.scalars().first()
+        if not cfg and empresa_id == 1:
+            res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+            cfg = res_cfg.scalars().first()
         if cfg:
             cfg.resolucion_dian = resolucion.texto_resolucion
             cfg.factura_prefijo = resolucion.prefijo

@@ -58,11 +58,12 @@ async def calcular_tarifa_domicilio(
     """
     # 1. Cargar configuración de la empresa
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
 
     ciudad_empresa = (cfg.ciudad if cfg and cfg.ciudad else "Bogota").strip()
     ciudad_final = (ciudad_destino or ciudad_empresa).strip()

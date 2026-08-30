@@ -126,13 +126,13 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
     if not factura:
         return {"exito": False, "mensaje": "Factura no encontrada"}
 
-    empresa_id = factura.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(
-            or_(ConfiguracionEmpresa.empresa_id == empresa_id, ConfiguracionEmpresa.id == empresa_id)
-        )
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
     )
-    cfg = res_cfg.scalar_one_or_none()
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
     
     if not cfg or not cfg.fe_habilitada:
         return {"exito": False, "mensaje": "La Facturación Electrónica DIAN no está habilitada en los parámetros"}
