@@ -252,7 +252,7 @@ export default function InventarioPage() {
       const payload = {
         ...formProducto,
         categoria_id: formProducto.categoria_id ? parseInt(formProducto.categoria_id) : null,
-        unidad_medida_id: formProducto.unidad_medida_id ? parseInt(formProducto.unidad_medida_id) : 1,
+        unidad_medida_id: formProducto.unidad_medida_id ? parseInt(formProducto.unidad_medida_id) : (unidades[0]?.id || 1),
         precio_costo: parseFloat(formProducto.precio_costo) || 0,
         precio_venta: parseFloat(formProducto.precio_venta) || 0,
         iva_porcentaje: parseFloat(formProducto.iva_porcentaje) || 0,

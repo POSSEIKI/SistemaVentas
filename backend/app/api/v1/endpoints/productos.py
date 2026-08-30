@@ -235,6 +235,8 @@ async def listar_categorias(
         for row in todas:
             if "general" in row.nombre.lower():
                 categorias_filtradas.append({"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos})
+        if not categorias_filtradas:
+            categorias_filtradas = [{"id": row.id, "nombre": row.nombre, "total_productos": row.total_productos} for row in todas]
 
     return categorias_filtradas
 
@@ -409,22 +411,57 @@ async def crear_producto(
     current_user=Depends(get_current_user),
 ):
     empresa_id = current_user.empresa_id or 1
+    codigo_clean = (datos.codigo or "").strip()
+    nombre_clean = (datos.nombre or "").strip()
+
+    if not codigo_clean:
+        raise HTTPException(status_code=400, detail="El código de referencia es obligatorio")
+    if not nombre_clean:
+        raise HTTPException(status_code=400, detail="El nombre del producto es obligatorio")
+
     # Validar código único dentro de la misma empresa
     result = await db.execute(
         select(Producto).where(
             Producto.empresa_id == empresa_id,
-            Producto.codigo == datos.codigo.strip()
+            Producto.codigo == codigo_clean
         )
     )
     existente = result.scalar_one_or_none()
     if existente:
         raise HTTPException(
             status_code=400,
-            detail=f"Ya existe un producto en tu negocio con el código '{datos.codigo}' (ID: {existente.id}). Búscalo en la tabla para modificarlo o usa otro código."
+            detail=f"Ya existe un producto en tu negocio con el código '{codigo_clean}' (ID: {existente.id}). Búscalo en la tabla para modificarlo o usa otro código."
         )
 
-    # Si es fraccionado y precio_venta no fue puesto, usar precio_caja o precio_unidad
     p_data = datos.model_dump()
+    p_data["codigo"] = codigo_clean
+    p_data["nombre"] = nombre_clean
+
+    # Limpiar strings vacíos a None para evitar colisiones
+    for field in ["codigo_barras", "codigo_barras_blister", "codigo_barras_unidad", "laboratorio", "principio_activo", "ubicacion", "descripcion"]:
+        if field in p_data and isinstance(p_data[field], str):
+            val_clean = p_data[field].strip()
+            p_data[field] = val_clean if val_clean else None
+
+    # Validar que unidad_medida_id exista en la BD para evitar IntegrityError
+    if p_data.get("unidad_medida_id"):
+        res_u = await db.execute(select(UnidadMedida).where(UnidadMedida.id == p_data["unidad_medida_id"]))
+        if not res_u.scalar_one_or_none():
+            res_u_first = await db.execute(select(UnidadMedida).order_by(UnidadMedida.id.asc()).limit(1))
+            u_first = res_u_first.scalar_one_or_none()
+            p_data["unidad_medida_id"] = u_first.id if u_first else None
+    else:
+        res_u_first = await db.execute(select(UnidadMedida).order_by(UnidadMedida.id.asc()).limit(1))
+        u_first = res_u_first.scalar_one_or_none()
+        p_data["unidad_medida_id"] = u_first.id if u_first else None
+
+    # Validar que categoria_id exista en la BD si se envió
+    if p_data.get("categoria_id"):
+        res_cat = await db.execute(select(Categoria).where(Categoria.id == p_data["categoria_id"]))
+        if not res_cat.scalar_one_or_none():
+            p_data["categoria_id"] = None
+
+    # Si es fraccionado y precio_venta no fue puesto, usar precio_caja o precio_unidad
     if p_data.get("maneja_fracciones"):
         if not p_data.get("precio_venta") and p_data.get("precio_caja"):
             p_data["precio_venta"] = p_data["precio_caja"]
@@ -461,7 +498,27 @@ async def actualizar_producto(
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    update_data = datos.model_dump(exclude_unset=True)
+
+    # Validar unidad de medida si se intenta actualizar
+    if "unidad_medida_id" in update_data and update_data["unidad_medida_id"]:
+        res_u = await db.execute(select(UnidadMedida).where(UnidadMedida.id == update_data["unidad_medida_id"]))
+        if not res_u.scalar_one_or_none():
+            update_data["unidad_medida_id"] = producto.unidad_medida_id
+
+    # Validar categoria si se intenta actualizar
+    if "categoria_id" in update_data and update_data["categoria_id"]:
+        res_cat = await db.execute(select(Categoria).where(Categoria.id == update_data["categoria_id"]))
+        if not res_cat.scalar_one_or_none():
+            update_data["categoria_id"] = None
+
+    # Limpiar strings vacíos a None
+    for field in ["codigo_barras", "codigo_barras_blister", "codigo_barras_unidad", "laboratorio", "principio_activo", "ubicacion", "descripcion"]:
+        if field in update_data and isinstance(update_data[field], str):
+            val_clean = update_data[field].strip()
+            update_data[field] = val_clean if val_clean else None
+
+    for campo, valor in update_data.items():
         setattr(producto, campo, valor)
     
     await db.commit()

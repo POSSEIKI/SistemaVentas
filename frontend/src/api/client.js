@@ -35,7 +35,14 @@ api.interceptors.response.use(
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }
-    const msg = error.response?.data?.detail || error.message || 'Error de conexión con el servidor'
+    let msg = error.response?.data?.detail
+    if (!msg) {
+      if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
+        msg = 'El servidor está iniciando o reconectando. Por favor reintenta en 5 segundos.'
+      } else {
+        msg = error.message || 'Error de conexión con el servidor'
+      }
+    }
     return Promise.reject(new Error(msg))
   }
 )
