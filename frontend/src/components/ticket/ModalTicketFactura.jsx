@@ -384,7 +384,7 @@ export default function ModalTicketFactura({ factura, onCerrar, formatoInicial =
         </div>
 
         {/* ── Cuerpo: Previsualización ────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-dark-950 flex justify-center items-start">
+        <div className="flex-1 overflow-y-auto overflow-x-auto touch-scroll-x p-2 sm:p-6 bg-dark-950 flex justify-center items-start w-full">
           
           <div
             id="ticket-print-container"
