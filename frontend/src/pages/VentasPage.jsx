@@ -695,7 +695,7 @@ export default function VentasPage() {
         </div>
 
         {/* Tabla de líneas en carrito (Diseño fluido y minimalista) */}
-        <div className="flex-1 overflow-y-auto pb-24 md:pb-2">
+        <div className="flex-1 overflow-y-auto pb-32 md:pb-2">
           {store.lineas.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-56 text-dark-500">
               <div className="w-14 h-14 rounded-2xl bg-dark-800 border border-dark-700 flex items-center justify-center mb-3">
@@ -782,21 +782,21 @@ export default function VentasPage() {
           )}
         </div>
 
-        {/* Barra Flotante Móvil para Cobrar Rápido */}
+        {/* Barra Flotante Móvil para Cobrar Rápido - Elevada sobre el menú inferior */}
         {store.lineas.length > 0 && (
-          <div className="md:hidden fixed bottom-14 left-2 right-2 z-30 bg-dark-900/95 backdrop-blur-xl border border-primary-500/50 rounded-2xl p-2.5 shadow-2xl flex items-center justify-between gap-2 animate-in slide-in-from-bottom-2">
+          <div className="md:hidden fixed bottom-[4.5rem] sm:bottom-20 left-3 right-3 z-40 bg-dark-900/95 backdrop-blur-xl border border-primary-500/60 rounded-2xl p-3 shadow-2xl shadow-black/80 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2">
             <div>
-              <span className="text-[10px] text-dark-400 uppercase font-bold block">
+              <span className="text-[10px] text-dark-400 uppercase font-bold block tracking-wide">
                 {store.lineas.length} producto(s)
               </span>
-              <span className="text-base font-black text-white font-mono">
+              <span className="text-base sm:text-lg font-black text-white font-mono tracking-tight">
                 {formatCOP(total)}
               </span>
             </div>
             <button
               type="button"
               onClick={() => setModalCobroMovil(true)}
-              className="btn-primary py-2 px-4 text-xs font-bold shadow-lg flex items-center gap-1.5"
+              className="btn-primary py-2.5 px-5 text-xs font-bold shadow-lg shadow-primary-900/40 flex items-center gap-1.5"
             >
               <span>Cobrar ⚡</span>
             </button>
