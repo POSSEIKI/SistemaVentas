@@ -31,14 +31,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url?.includes('/auth/login')
+    const isAuthPage = typeof window !== 'undefined' && (window.location.pathname.includes('/login') || window.location.pathname.includes('/registro'))
+
+    if (error.response?.status === 401 && !isLoginRequest && !isAuthPage) {
       useAuthStore.getState().logout()
       window.location.href = '/login'
     }
+
     let msg = error.response?.data?.detail
     if (!msg) {
       if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
-        msg = 'El servidor está iniciando o reconectando. Por favor reintenta en 5 segundos.'
+        msg = 'El servidor está iniciando o reconectando. Por favor reintenta en unos segundos.'
       } else {
         msg = error.message || 'Error de conexión con el servidor'
       }

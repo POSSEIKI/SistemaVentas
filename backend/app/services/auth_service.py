@@ -63,8 +63,9 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
     return {"mensaje": "Sistema configurado exitosamente"}
 
 async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
+    u_clean = (request.username or "").strip().lower()
     result = await db.execute(
-        select(Usuario).where(Usuario.username == request.username, Usuario.activo == True)
+        select(Usuario).where(func.lower(Usuario.username) == u_clean, Usuario.activo == True)
     )
     usuario = result.scalar_one_or_none()
 
