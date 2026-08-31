@@ -130,7 +130,9 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
             )
             db.add(mov)
 
-    total = (subtotal + iva_total + datos.domicilio_valor).quantize(Decimal("0.01"))
+    total = (subtotal + iva_total + (datos.domicilio_valor or Decimal("0"))).quantize(Decimal("0.01"))
+    valor_recibido = datos.valor_recibido or Decimal("0")
+    cambio = max(Decimal("0"), valor_recibido - total) if valor_recibido > total else Decimal("0")
 
     # Procesar redención de bono / saldo a favor si fue aplicado
     if datos.bono_codigo and datos.bono_monto_aplicado and datos.bono_monto_aplicado > Decimal("0"):
@@ -157,7 +159,17 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
             if datos.domicilio_telefono:
                 cli.telefono = datos.domicilio_telefono.strip()
 
+    res_max_f = await db.execute(select(func.coalesce(func.max(Factura.id), 0)))
+    next_f_id = (res_max_f.scalar() or 0) + 1
+
+    res_max_fd = await db.execute(select(func.coalesce(func.max(FacturaDetalle.id), 0)))
+    next_fd_id = (res_max_fd.scalar() or 0)
+    for l_db in lineas_db:
+        next_fd_id += 1
+        l_db.id = next_fd_id
+
     factura = Factura(
+        id=next_f_id,
         empresa_id=empresa_id,
         numero=numero,
         fecha=datetime.now(timezone.utc),
@@ -166,14 +178,14 @@ async def crear_factura(datos: FacturaCreate, usuario_id: int, db: AsyncSession,
         subtotal=subtotal,
         descuento_valor=descuento_total,
         iva_valor=iva_total,
-        domicilio_valor=datos.domicilio_valor,
+        domicilio_valor=datos.domicilio_valor or Decimal("0"),
         domicilio_direccion=datos.domicilio_direccion,
         domicilio_telefono=datos.domicilio_telefono,
         domicilio_notas=datos.domicilio_notas,
         domicilio_distancia_km=datos.domicilio_distancia_km,
         total=total,
         forma_pago=datos.forma_pago,
-        valor_recibido=datos.valor_recibido,
+        valor_recibido=valor_recibido,
         cambio=cambio,
         observaciones=datos.observaciones,
         resolucion_id=resolucion_id,
