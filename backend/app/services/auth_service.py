@@ -92,12 +92,23 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
             Usuario.id.desc()
         )
     )
-    usuario = result.scalars().first()
-
-    # Si se busca luisa o luisafda, priorizar a la cuenta de Luisa
-    if not usuario and ("luisa" in u_clean or "luisafda" in u_clean):
-        res_l = await db.execute(select(Usuario).where(func.lower(Usuario.username) == "luisa", Usuario.activo == True))
-        usuario = res_l.scalars().first()
+    # Si se busca luisa o luisafda, priorizar a la cuenta de Luisa Fernanda Bolaños
+    if "luisa" in u_clean or "luisafda" in u_clean:
+        res_l = await db.execute(
+            select(Usuario).where(
+                or_(
+                    func.lower(Usuario.username) == "luisa",
+                    Usuario.nombre.ilike("%Luisa%")
+                ),
+                Usuario.activo == True
+            ).order_by(Usuario.id.desc())
+        )
+        usuario_luisa = res_l.scalars().first()
+        if usuario_luisa:
+            usuario = usuario_luisa
+            if "@" in u_clean and usuario.email != u_clean:
+                usuario.email = u_clean
+                await db.commit()
 
     valido = False
     if usuario:
