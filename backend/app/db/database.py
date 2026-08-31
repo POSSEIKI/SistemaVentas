@@ -167,8 +167,9 @@ async def init_db() -> None:
                 try:
                     from app.core.security import hash_password
                     h1234 = hash_password("1234")
+                    await conn.execute(text("UPDATE usuarios SET email = 'alberto@empresa.com' WHERE id = 1 AND lower(username) != 'luisa';"))
                     await conn.execute(
-                        text("UPDATE usuarios SET email = :em, codigo_hash = :ch, bloqueado = false, intentos_fallidos = 0 WHERE lower(username) = 'luisa' OR lower(email) = :em;"),
+                        text("UPDATE usuarios SET email = :em, codigo_hash = :ch, bloqueado = false, intentos_fallidos = 0 WHERE lower(username) = 'luisa' OR id = 3;"),
                         {"em": "luisafda224@hotmail.com", "ch": h1234}
                     )
                     await conn.execute(text("UPDATE usuarios SET bloqueado = false, intentos_fallidos = 0;"))
