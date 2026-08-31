@@ -176,7 +176,7 @@ async def crear_o_encontrar(datos: ClienteCreate, db: AsyncSession = Depends(get
 from sqlalchemy.orm import joinedload, selectinload
 from app.models.configuracion import ConfiguracionEmpresa
 
-async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict:
+async def _formatear_factura_completa(factura_id: int, db: AsyncSession, empresa_id: Optional[int] = None) -> dict:
     query = (
         select(Factura)
         .options(
@@ -191,14 +191,15 @@ async def _formatear_factura_completa(factura_id: int, db: AsyncSession) -> dict
     if not f:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
+    emp_id = empresa_id or f.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == emp_id).order_by(ConfiguracionEmpresa.id.desc())
     )
     cfg = res_cfg.scalars().first()
-    if not cfg and empresa_id == 1:
+    if not cfg and emp_id == 1:
         res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
         cfg = res_cfg.scalars().first()
-    tz = await _obtener_zona_horaria(db, empresa_id)
+    tz = await _obtener_zona_horaria(db, emp_id)
 
     fecha_dt = f.fecha
     if fecha_dt:
