@@ -3,7 +3,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { suscripcionesApi } from '../../api/services'
 import {
   ShoppingCart, Package, BarChart2,
-  Sliders, FileText, LogOut, Menu, Sparkles, Crown
+  Sliders, FileText, LogOut, Menu, Sparkles, Crown, RefreshCw, UserCheck
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -13,6 +13,7 @@ import InventarioPage from '../../pages/InventarioPage'
 import ReportesPage from '../../pages/ReportesPage'
 import ParametrosPage from '../../pages/ParametrosPage'
 import SuperAdminPage from '../../pages/SuperAdminPage'
+import ModalCambioCajero from './ModalCambioCajero'
 
 const NAV_ITEMS = [
   { to: '/ventas',     icon: ShoppingCart, label: 'Ventas' },
@@ -28,6 +29,7 @@ export default function AppLayout() {
   const location = useLocation()
   const [hora, setHora] = useState(new Date())
   const [suscripcion, setSuscripcion] = useState(null)
+  const [modalCambioCajeroAbierto, setModalCambioCajeroAbierto] = useState(false)
 
   const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN' || usuario?.rol?.nombre === 'SUPER_ADMIN' || usuario?.permisos?.super_admin || usuario?.username === 'superadmin'
   const esAdmin = esSuperAdmin || usuario?.rol === 'ADMINISTRADOR' || usuario?.rol_nombre === 'ADMINISTRADOR' || usuario?.permisos?.administrador_total || usuario?.id === 1 || usuario?.id === 3
@@ -142,11 +144,28 @@ export default function AppLayout() {
           )}
         </nav>
 
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-white text-sm font-medium">{usuario?.nombre}</p>
-            <p className="text-dark-500 text-xs">{horaStr} · {fechaStr}</p>
-          </div>
+        <div className="flex items-center gap-3">
+          {/* Botón Cambio Rápido de Cajero / Turno */}
+          <button
+            type="button"
+            onClick={() => setModalCambioCajeroAbierto(true)}
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-dark-900 border border-dark-700 hover:border-primary-500/60 transition-all text-left group cursor-pointer"
+            title="Cambiar cajero en turno"
+          >
+            <div className="w-8 h-8 rounded-lg bg-primary-600/20 border border-primary-500/30 flex items-center justify-center font-bold text-primary-400 text-xs flex-shrink-0 group-hover:bg-primary-600 group-hover:text-white transition-colors">
+              {(usuario?.nombre || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 pr-1">
+              <p className="text-white text-xs font-bold truncate max-w-[130px] flex items-center gap-1">
+                <span>{usuario?.nombre}</span>
+              </p>
+              <p className="text-primary-400 text-[10px] font-semibold flex items-center gap-1">
+                <RefreshCw size={10} className="group-hover:rotate-180 transition-transform text-amber-400" />
+                <span>Cambiar ({usuario?.rol || 'Cajero'})</span>
+              </p>
+            </div>
+          </button>
+
           <button
             onClick={handleLogout}
             className="text-dark-500 hover:text-red-400 transition-colors p-2 rounded-xl hover:bg-dark-700"
@@ -176,8 +195,15 @@ export default function AppLayout() {
             </NavLink>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-dark-500 text-sm">{horaStr}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalCambioCajeroAbierto(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-dark-900 border border-dark-700 text-xs text-white font-bold"
+          >
+            <RefreshCw size={12} className="text-primary-400" />
+            <span className="truncate max-w-[90px]">{(usuario?.nombre || '').split(' ')[0]}</span>
+          </button>
           <button
             onClick={handleLogout}
             className="text-dark-500 hover:text-red-400 p-1"
@@ -186,6 +212,12 @@ export default function AppLayout() {
           </button>
         </div>
       </header>
+
+      {/* Modal Cambio Rápido de Cajero */}
+      <ModalCambioCajero
+        abierto={modalCambioCajeroAbierto}
+        alCerrar={() => setModalCambioCajeroAbierto(false)}
+      />
 
       {/* ── Contenido Principal con Persistencia de Vistas (Keep-Alive) ─── */}
       <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden w-full max-w-full pb-24 md:pb-8 relative flex flex-col min-w-0">
