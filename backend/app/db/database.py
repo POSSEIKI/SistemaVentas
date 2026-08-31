@@ -230,8 +230,9 @@ async def init_db() -> None:
                             activo=True
                         ))
                     
-                    # Sincronizar correo para usuarios existentes y desbloquear cuentas
-                    await session.execute(text("UPDATE usuarios SET email = 'luisafda224@hotmail.com' WHERE lower(username) = 'luisa';"))
+                    # Sincronizar correo para usuarios existentes, sincronizar contraseña 1234 y desbloquear cuentas
+                    h1234 = hash_password("1234")
+                    await session.execute(text(f"UPDATE usuarios SET email = 'luisafda224@hotmail.com', codigo_hash = '{h1234}', bloqueado = false, intentos_fallidos = 0 WHERE lower(username) = 'luisa' OR lower(email) = 'luisafda224@hotmail.com';"))
                     await session.execute(text("UPDATE usuarios SET bloqueado = false, intentos_fallidos = 0;"))
                     await session.commit()
             except Exception as e_seed:
