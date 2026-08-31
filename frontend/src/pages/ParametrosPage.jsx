@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Package, Users, Truck, Settings, Sliders
+  Package, Users, Truck, Settings, Sliders, ShieldCheck
 } from 'lucide-react'
 import ParametrosProductos from './parametros/ParametrosProductos'
 import ParametrosClientes from './parametros/ParametrosClientes'
 import ParametrosProveedores from './parametros/ParametrosProveedores'
 import ParametrosEmpresa from './parametros/ParametrosEmpresa'
+import ParametrosUsuarios from './parametros/ParametrosUsuarios'
 
 const TABS = [
   { id: 'productos',   label: 'Productos',   icon: Package, desc: 'Catálogo, códigos de barra y fraccionamiento' },
   { id: 'clientes',    label: 'Clientes',    icon: Users,   desc: 'Cédulas / NITs, teléfonos y domicilios' },
   { id: 'proveedores', label: 'Proveedores', icon: Truck,   desc: 'Distribuidores, laboratorios y contactos' },
+  { id: 'usuarios',    label: 'Usuarios y Permisos', icon: ShieldCheck, desc: 'Cajeros, vendedoras y permisos de acceso' },
   { id: 'empresa',     label: 'Empresa',     icon: Settings, desc: 'Datos fiscales, márgenes y reglas' },
 ]
 
@@ -76,6 +78,7 @@ export default function ParametrosPage() {
         {tabActiva === 'productos' && <ParametrosProductos />}
         {tabActiva === 'clientes' && <ParametrosClientes />}
         {tabActiva === 'proveedores' && <ParametrosProveedores />}
+        {tabActiva === 'usuarios' && <ParametrosUsuarios />}
         {tabActiva === 'empresa' && <ParametrosEmpresa />}
       </div>
     </div>

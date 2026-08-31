@@ -27,7 +27,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-from app.api.v1.endpoints import auth, productos, ventas, inventario, configuracion, suscripciones, resoluciones, superadmin
+from app.api.v1.endpoints import auth, productos, ventas, inventario, configuracion, suscripciones, resoluciones, superadmin, usuarios
 
 API_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_PREFIX)
@@ -38,6 +38,7 @@ app.include_router(configuracion.router, prefix=API_PREFIX)
 app.include_router(suscripciones.router, prefix=API_PREFIX)
 app.include_router(resoluciones.router, prefix=API_PREFIX)
 app.include_router(superadmin.router, prefix=API_PREFIX)
+app.include_router(usuarios.router, prefix=API_PREFIX)
 
 @app.get("/health")
 @app.get("/api/v1/health")

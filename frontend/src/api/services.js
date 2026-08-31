@@ -114,3 +114,10 @@ export const superadminApi = {
   logsFallos: (limite = 50) => api.get('/superadmin/logs-fallos', { params: { limite } }).then(r => r.data),
 }
 
+export const usuariosApi = {
+  listar: () => api.get('/usuarios').then(r => r.data),
+  crear: (datos) => api.post('/usuarios', datos).then(r => r.data),
+  actualizar: (id, datos) => api.patch(`/usuarios/${id}`, datos).then(r => r.data),
+  eliminar: (id) => api.delete(`/usuarios/${id}`).then(r => r.data),
+}
+

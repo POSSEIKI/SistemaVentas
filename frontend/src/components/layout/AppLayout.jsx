@@ -30,6 +30,18 @@ export default function AppLayout() {
   const [suscripcion, setSuscripcion] = useState(null)
 
   const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN' || usuario?.rol?.nombre === 'SUPER_ADMIN' || usuario?.permisos?.super_admin || usuario?.username === 'superadmin'
+  const esAdmin = esSuperAdmin || usuario?.rol === 'ADMINISTRADOR' || usuario?.rol_nombre === 'ADMINISTRADOR' || usuario?.permisos?.administrador_total || usuario?.id === 1 || usuario?.id === 3
+
+  const navItemsPermitidos = NAV_ITEMS.filter(item => {
+    if (esAdmin) return true
+    const permisos = usuario?.permisos || {}
+    if (item.to === '/ventas') return permisos.ver_ventas !== false
+    if (item.to === '/inventario') return permisos.ver_inventario !== false
+    if (item.to === '/compras') return permisos.ver_compras === true
+    if (item.to === '/reportes') return permisos.ver_reportes === true
+    if (item.to === '/parametros') return permisos.parametrizacion === true
+    return true
+  })
 
   useEffect(() => {
     suscripcionesApi.miSuscripcion()
@@ -38,11 +50,11 @@ export default function AppLayout() {
   }, [])
 
   const getActiveTab = (pathname) => {
-    if (pathname.startsWith('/super-admin')) return '/super-admin'
-    if (pathname.startsWith('/compras')) return '/compras'
-    if (pathname.startsWith('/inventario')) return '/inventario'
-    if (pathname.startsWith('/reportes')) return '/reportes'
-    if (pathname.startsWith('/parametros')) return '/parametros'
+    if (pathname.startsWith('/super-admin')) return esSuperAdmin ? '/super-admin' : '/ventas'
+    if (pathname.startsWith('/compras')) return (esAdmin || usuario?.permisos?.ver_compras) ? '/compras' : '/ventas'
+    if (pathname.startsWith('/inventario')) return (esAdmin || usuario?.permisos?.ver_inventario !== false) ? '/inventario' : '/ventas'
+    if (pathname.startsWith('/reportes')) return (esAdmin || usuario?.permisos?.ver_reportes) ? '/reportes' : '/ventas'
+    if (pathname.startsWith('/parametros')) return (esAdmin || usuario?.permisos?.parametrizacion) ? '/parametros' : '/ventas'
     return '/ventas'
   }
 
@@ -95,7 +107,7 @@ export default function AppLayout() {
 
         {/* Nav desktop */}
         <nav className="flex items-center gap-1">
-          {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+          {navItemsPermitidos.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -213,7 +225,7 @@ export default function AppLayout() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0
                       bg-dark-800 border-t border-dark-700
                       flex items-center justify-around px-2 py-2 z-50">
-        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+        {navItemsPermitidos.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
