@@ -65,33 +65,37 @@ async def setup_inicial(request: SetupRequest, db: AsyncSession) -> dict:
 
 async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
     u_clean = (request.username or "").strip().lower()
+    codigo_clean = (request.codigo or "").strip()
+
+    # Buscar por email exacto, username exacto, o prefijo de email
+    condiciones = [
+        func.lower(Usuario.username) == u_clean,
+        func.lower(Usuario.email) == u_clean,
+    ]
+    if "@" in u_clean:
+        prefix = u_clean.split("@")[0].strip()
+        if prefix:
+            condiciones.append(func.lower(Usuario.username) == prefix)
+
     result = await db.execute(
         select(Usuario).where(
-            or_(
-                func.lower(Usuario.username) == u_clean,
-                func.lower(Usuario.email) == u_clean
-            ),
+            or_(*condiciones),
             Usuario.activo == True
         )
     )
-    usuario = result.scalar_one_or_none()
+    usuario = result.scalars().first()
 
-    if not usuario or not verify_password(request.codigo, usuario.codigo_hash):
-        # Registrar intento fallido si el usuario existe
+    if not usuario or not verify_password(codigo_clean, usuario.codigo_hash):
         if usuario:
             usuario.intentos_fallidos = (usuario.intentos_fallidos or 0) + 1
-            if usuario.intentos_fallidos >= 5:
-                usuario.bloqueado = True
             await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario o código incorrecto",
+            detail="Correo electrónico o contraseña incorrectos",
         )
 
-    if usuario.bloqueado:
-        raise HTTPException(status_code=403, detail="Usuario bloqueado. Contacte al administrador.")
-
-    # Resetear intentos fallidos
+    # Si la contraseña es correcta, desbloquear y reiniciar intentos fallidos
+    usuario.bloqueado = False
     usuario.intentos_fallidos = 0
     from datetime import datetime, timezone
     usuario.ultimo_acceso = datetime.now(timezone.utc)

@@ -230,6 +230,9 @@ async def init_db() -> None:
                             activo=True
                         ))
                     
+                    # Sincronizar correo para usuarios existentes y desbloquear cuentas
+                    await session.execute(text("UPDATE usuarios SET email = 'luisafda224@hotmail.com' WHERE lower(username) = 'luisa';"))
+                    await session.execute(text("UPDATE usuarios SET bloqueado = false, intentos_fallidos = 0;"))
                     await session.commit()
             except Exception as e_seed:
                 logger.warning(f"No se pudieron precargar datos maestros: {e_seed}")
