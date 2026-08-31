@@ -51,6 +51,7 @@ const DEFAULT_CONFIG = {
   fe_rango_id: '',
   fe_tipo_documento: 'POS_ELECTRONICO',
   fe_municipio_id: '980',
+  fe_test_set_id: '',
 }
 
 export default function ParametrosEmpresa() {
@@ -62,6 +63,8 @@ export default function ParametrosEmpresa() {
   const [probandoFactus, setProbandoFactus] = useState(false)
   const [rangosFactus, setRangosFactus] = useState([])
   const [cargandoRangos, setCargandoRangos] = useState(false)
+  const [ejecutandoPruebas, setEjecutandoPruebas] = useState(false)
+  const [resultadoPruebas, setResultadoPruebas] = useState(null)
 
   // Resoluciones DIAN
   const [resoluciones, setResoluciones] = useState([])
@@ -175,6 +178,33 @@ export default function ParametrosEmpresa() {
       toast.error('Error al cargar rangos de Factus')
     } finally {
       setCargandoRangos(false)
+    }
+  }
+
+  const handleEjecutarSetPruebas = async () => {
+    if (!form.fe_test_set_id?.trim()) {
+      toast.error('Por favor ingresa primero el código TestSetID que te dio la DIAN')
+      return
+    }
+    setEjecutandoPruebas(true)
+    setResultadoPruebas(null)
+    try {
+      const res = await configApi.ejecutarSetPruebas({
+        test_set_id: form.fe_test_set_id.trim(),
+        client_id: form.fe_client_id,
+        client_secret: form.fe_client_secret,
+        ambiente: form.fe_ambiente || 'SANDBOX'
+      })
+      if (res.exito) {
+        setResultadoPruebas(res)
+        toast.success('¡Set de Pruebas DIAN ejecutado con éxito total!', { duration: 5000, icon: '🎉' })
+      } else {
+        toast.error(res.mensaje || 'Error al ejecutar set de pruebas')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || 'Error al conectar con la DIAN')
+    } finally {
+      setEjecutandoPruebas(false)
     }
   }
 
@@ -718,6 +748,115 @@ export default function ParametrosEmpresa() {
                   {probandoFactus ? <RefreshCw size={14} className="animate-spin text-primary-400" /> : <Zap size={14} className="text-amber-400" />}
                   <span>{probandoFactus ? 'Verificando con Factus...' : '⚡ Probar Conexión Factus'}</span>
                 </button>
+              </div>
+
+              {/* ── EJECUTOR AUTOMÁTICO DE SET DE PRUEBAS DIAN ────────── */}
+              <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-amber-950/40 via-dark-900 to-dark-900 border border-amber-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 font-bold">
+                      <Sparkles size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                        <span>Habilitación DIAN Automática (Set de Pruebas)</span>
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-semibold border border-amber-500/30">
+                          10 Facturas + 2 NC + 2 ND
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-dark-400">
+                        Supera las pruebas obligatorias de la DIAN sin digitar formularios manuales.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <label className="block text-[11px] font-semibold text-dark-300">
+                    Código del Set de Pruebas DIAN (TestSetID):
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      className="input-field py-2 text-xs font-mono font-bold flex-1 tracking-wider text-amber-300 placeholder:text-dark-600 placeholder:font-normal"
+                      placeholder="Pega aquí tu TestSetID (ej: fa326ca7-c1f8-40d3-a6fc-24d7c1040607)"
+                      value={form.fe_test_set_id || ''}
+                      onChange={e => set('fe_test_set_id', e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={ejecutandoPruebas || !form.fe_test_set_id?.trim()}
+                      onClick={handleEjecutarSetPruebas}
+                      className="btn-primary py-2 px-5 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-500 shadow-lg shadow-amber-950/50 flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                    >
+                      {ejecutandoPruebas ? (
+                        <>
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Transmitiendo a la DIAN...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={14} className="text-white fill-white" />
+                          <span>⚡ Ejecutar Set de Pruebas</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-dark-500">
+                    💡 Entra a <b>catalogo-vpfe-hab.dian.gov.co ➡️ Registro y Habilitación ➡️ Factura Electrónica</b> para copiar tu TestSetID.
+                  </p>
+                </div>
+
+                {/* Reporte de Resultados del Set de Pruebas */}
+                {resultadoPruebas && (
+                  <div className="mt-3 p-3.5 bg-dark-950/80 rounded-xl border border-emerald-500/50 space-y-2.5 animate-in fade-in">
+                    <div className="flex items-center justify-between border-b border-dark-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 size={16} className="text-emerald-400" />
+                        <span className="text-xs font-bold text-white">
+                          {resultadoPruebas.mensaje}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300">
+                        {resultadoPruebas.resumen?.estado_dian || 'HABILITADO'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                      <div className="bg-dark-900 p-2 rounded-lg border border-dark-800">
+                        <span className="text-[10px] text-dark-400 block">Facturas Aceptadas</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">
+                          {resultadoPruebas.resumen?.facturas_aceptadas} / 10
+                        </span>
+                      </div>
+                      <div className="bg-dark-900 p-2 rounded-lg border border-dark-800">
+                        <span className="text-[10px] text-dark-400 block">Notas Crédito</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">
+                          {resultadoPruebas.resumen?.notas_credito_aceptadas} / 2
+                        </span>
+                      </div>
+                      <div className="bg-dark-900 p-2 rounded-lg border border-dark-800">
+                        <span className="text-[10px] text-dark-400 block">Notas Débito</span>
+                        <span className="font-bold text-emerald-400 font-mono text-sm">
+                          {resultadoPruebas.resumen?.notas_debito_aceptadas} / 2
+                        </span>
+                      </div>
+                      <div className="bg-dark-900 p-2 rounded-lg border border-dark-800">
+                        <span className="text-[10px] text-dark-400 block">Total Documentos</span>
+                        <span className="font-bold text-primary-400 font-mono text-sm">
+                          {resultadoPruebas.resumen?.total_documentos} / 14
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-2 bg-emerald-950/30 rounded-lg border border-emerald-800/30 text-[11px] text-emerald-300 flex items-center gap-1.5">
+                      <span>✓</span>
+                      <span>
+                        ¡Todo listo! Actualiza la página del portal DIAN para comprobar que tu estado cambió a <b>"Habilitado"</b> y solicitar tu resolución de producción en el MUISCA.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

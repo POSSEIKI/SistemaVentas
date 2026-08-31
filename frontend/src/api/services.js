@@ -88,6 +88,7 @@ export const configApi = {
   update: (datos) => api.patch('/configuracion/empresa', datos).then(r => r.data),
   probarFactus: (datos) => api.post('/configuracion/factus/probar-conexion', datos).then(r => r.data),
   rangosFactus: (datos) => api.post('/configuracion/factus/rangos-numeracion', datos).then(r => r.data),
+  ejecutarSetPruebas: (datos) => api.post('/configuracion/fe/ejecutar-set-pruebas', datos).then(r => r.data),
 }
 
 export const resolucionesApi = {

@@ -97,6 +97,7 @@ async def get_configuracion(db: AsyncSession = Depends(get_db), current_user=Dep
         "fe_rango_id": getattr(config, "fe_rango_id", "") or "",
         "fe_tipo_documento": getattr(config, "fe_tipo_documento", "POS_ELECTRONICO") or "POS_ELECTRONICO",
         "fe_municipio_id": getattr(config, "fe_municipio_id", "980") or "980",
+        "fe_test_set_id": getattr(config, "fe_test_set_id", "") or "",
     }
 
 @router.patch("/empresa")
@@ -114,19 +115,19 @@ async def actualizar_configuracion(
         # Sincronizar campos principales con la tabla Empresa si existe
         if current_user.empresa_id:
             res_emp = await db.execute(select(Empresa).where(Empresa.id == current_user.empresa_id))
-            emp = res_emp.scalars().first()
+            emp = res_emp.scalar_one_or_none()
             if emp:
                 if "nombre" in datos and datos["nombre"]:
                     emp.nombre = str(datos["nombre"]).strip()
-                if "nit" in datos and datos["nit"] is not None:
+                if "nit" in datos and datos["nit"]:
                     emp.nit = str(datos["nit"]).strip()
-                if "telefono" in datos and datos["telefono"] is not None:
+                if "telefono" in datos:
                     emp.telefono = str(datos["telefono"]).strip()
-                if "direccion" in datos and datos["direccion"] is not None:
-                    emp.direccion = str(datos["direccion"]).strip()
-                if "ciudad" in datos and datos["ciudad"] is not None:
+                if "ciudad" in datos:
                     emp.ciudad = str(datos["ciudad"]).strip()
-                if "email" in datos and datos["email"] is not None:
+                if "direccion" in datos:
+                    emp.direccion = str(datos["direccion"]).strip()
+                if "email" in datos:
                     emp.email = str(datos["email"]).strip()
                 if "rubro" in datos and datos["rubro"]:
                     emp.rubro = str(datos["rubro"]).strip().upper()
@@ -137,7 +138,7 @@ async def actualizar_configuracion(
             "factura_prefijo", "rubro", "modo_redondeo", "formato_impresion",
             "resolucion_dian", "pais", "zona_horaria", "fe_proveedor",
             "fe_ambiente", "fe_client_id", "fe_client_secret", "fe_rango_id",
-            "fe_tipo_documento", "fe_municipio_id"
+            "fe_tipo_documento", "fe_municipio_id", "fe_test_set_id"
         ]
         numeric_fields = [
             "iva_porcentaje", "domicilio_corta", "domicilio_media", "domicilio_larga",
@@ -195,3 +196,23 @@ async def consultar_rangos_factus(
     ambiente = datos.get("ambiente", "SANDBOX")
     return await obtener_rangos_numeracion(client_id, client_secret, ambiente)
 
+@router.post("/fe/ejecutar-set-pruebas")
+async def ejecutar_set_pruebas_endpoint(
+    datos: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    empresa_id = current_user.empresa_id or 1
+    test_set_id = (datos.get("test_set_id") or "").strip()
+    if not test_set_id:
+        raise HTTPException(status_code=400, detail="El código TestSetID de la DIAN es obligatorio")
+
+    from app.services.factus_service import ejecutar_set_de_pruebas_dian
+    return await ejecutar_set_de_pruebas_dian(
+        test_set_id=test_set_id,
+        client_id=datos.get("client_id"),
+        client_secret=datos.get("client_secret"),
+        ambiente=datos.get("ambiente", "SANDBOX"),
+        db=db,
+        empresa_id=empresa_id
+    )

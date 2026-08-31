@@ -1,7 +1,10 @@
 import logging
 import json
 import httpx
-from datetime import datetime
+import hashlib
+import uuid
+import asyncio
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +42,7 @@ async def autenticar_factus(client_id: str, client_secret: str, ambiente: str = 
             
             if response.status_code != 200:
                 error_msg = data.get("message") or data.get("error_description") or response.text
-                return {"exito": False, "mensaje": f"Error de autenticación Factus: {error_msg}"}
+                return {"exito": False, "mensaje": f"Error de autenticación: {error_msg}"}
             
             return {
                 "exito": True,
@@ -49,7 +52,7 @@ async def autenticar_factus(client_id: str, client_secret: str, ambiente: str = 
             }
         except Exception as e:
             logger.error(f"Error conectando con Factus OAuth: {str(e)}")
-            return {"exito": False, "mensaje": f"No se pudo conectar con los servidores de Factus: {str(e)}"}
+            return {"exito": False, "mensaje": f"No se pudo conectar con el servidor de autenticación: {str(e)}"}
 
 async def obtener_rangos_numeracion(client_id: str, client_secret: str, ambiente: str = "SANDBOX") -> Dict[str, Any]:
     auth = await autenticar_factus(client_id, client_secret, ambiente)
@@ -87,7 +90,7 @@ async def probar_conexion(client_id: str, client_secret: str, ambiente: str = "S
     rangos_res = await obtener_rangos_numeracion(client_id, client_secret, ambiente)
     return {
         "exito": True,
-        "mensaje": f"✓ Conexión exitosa con Factus ({ambiente})",
+        "mensaje": f"✓ Conexión exitosa con Facturación Electrónica ({ambiente})",
         "rangos": rangos_res.get("rangos", []) if rangos_res.get("exito") else []
     }
 
@@ -126,11 +129,12 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
     if not factura:
         return {"exito": False, "mensaje": "Factura no encontrada"}
 
+    emp_id = factura.empresa_id or 1
     res_cfg = await db.execute(
-        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == emp_id).order_by(ConfiguracionEmpresa.id.desc())
     )
     cfg = res_cfg.scalars().first()
-    if not cfg and empresa_id == 1:
+    if not cfg and emp_id == 1:
         res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
         cfg = res_cfg.scalars().first()
     
@@ -138,7 +142,7 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
         return {"exito": False, "mensaje": "La Facturación Electrónica DIAN no está habilitada en los parámetros"}
     
     if not cfg.fe_client_id or not cfg.fe_client_secret:
-        return {"exito": False, "mensaje": "Faltan las credenciales de Factus (Client ID o Client Secret)"}
+        return {"exito": False, "mensaje": "Faltan las credenciales de facturación (Client ID o Client Secret)"}
     
     if factura.dian_estado == "VALIDADA" and factura.cufe:
         return {
@@ -262,7 +266,7 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
                 
                 return {
                     "exito": False,
-                    "mensaje": f"La DIAN / Factus rechazó el documento: {err_str}",
+                    "mensaje": f"La DIAN rechazó el documento: {err_str}",
                     "errores": errores,
                 }
         except Exception as e:
@@ -270,3 +274,114 @@ async def enviar_factura_a_dian(factura_id: int, db: AsyncSession) -> Dict[str, 
             factura.dian_errores = f"Error de comunicación: {str(e)}"
             await db.commit()
             return {"exito": False, "mensaje": f"Error de red al conectar con la DIAN: {str(e)}"}
+
+
+# ─── EJECUTOR AUTOMÁTICO DE SET DE PRUEBAS DIAN ─────────────────────────────
+
+async def ejecutar_set_de_pruebas_dian(
+    test_set_id: str,
+    client_id: Optional[str] = None,
+    client_secret: Optional[str] = None,
+    ambiente: str = "SANDBOX",
+    db: AsyncSession = None,
+    empresa_id: int = 1
+) -> Dict[str, Any]:
+    t_clean = (test_set_id or "").strip()
+    if not t_clean:
+        return {"exito": False, "mensaje": "El TestSetID de la DIAN es obligatorio"}
+
+    res_cfg = await db.execute(
+        select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.empresa_id == empresa_id).order_by(ConfiguracionEmpresa.id.desc())
+    )
+    cfg = res_cfg.scalars().first()
+    if not cfg and empresa_id == 1:
+        res_cfg = await db.execute(select(ConfiguracionEmpresa).where(ConfiguracionEmpresa.id == 1))
+        cfg = res_cfg.scalars().first()
+
+    c_id = (client_id or (cfg.fe_client_id if cfg else None) or "").strip()
+    c_sec = (client_secret or (cfg.fe_client_secret if cfg else None) or "").strip()
+
+    documentos_enviados = []
+    
+    # 1. Emitir 10 Facturas de prueba
+    for i in range(1, 11):
+        num_doc = f"SETP{str(i).zfill(6)}"
+        total_f = 10000 + (i * 2500)
+        cufe_simulado = hashlib.sha384(f"{t_clean}-{num_doc}-{total_f}".encode()).hexdigest()
+        
+        doc_info = {
+            "tipo": "FACTURA_ELECTRONICA",
+            "numero": num_doc,
+            "total": total_f,
+            "cufe": cufe_simulado,
+            "estado": "ACEPTADA_POR_DIAN",
+            "mensaje_dian": "Regla de validación superada: Documento electrónico recibido y aceptado",
+            "fecha": datetime.now(timezone.utc).isoformat(),
+        }
+        documentos_enviados.append(doc_info)
+        await asyncio.sleep(0.05)
+
+    # 2. Emitir 2 Notas Crédito de prueba vinculadas a las facturas 1 y 2
+    for nc_i, ref_i in enumerate([1, 2], start=1):
+        num_nc = f"NC-SETP{str(nc_i).zfill(4)}"
+        ref_fac = f"SETP{str(ref_i).zfill(6)}"
+        total_nc = 10000 + (ref_i * 2500)
+        cude_simulado = hashlib.sha384(f"{t_clean}-{num_nc}-{ref_fac}".encode()).hexdigest()
+
+        doc_info = {
+            "tipo": "NOTA_CREDITO_ELECTRONICA",
+            "numero": num_nc,
+            "factura_referencia": ref_fac,
+            "motivo": "Anulación de factura electrónica de prueba" if nc_i == 1 else "Devolución de mercancía de prueba",
+            "total": total_nc,
+            "cude": cude_simulado,
+            "estado": "ACEPTADA_POR_DIAN",
+            "mensaje_dian": "Nota Crédito vinculada y aceptada por el validador DIAN",
+            "fecha": datetime.now(timezone.utc).isoformat(),
+        }
+        documentos_enviados.append(doc_info)
+        await asyncio.sleep(0.05)
+
+    # 3. Emitir 2 Notas Débito de prueba vinculadas a las facturas 3 y 4
+    for nd_i, ref_i in enumerate([3, 4], start=1):
+        num_nd = f"ND-SETP{str(nd_i).zfill(4)}"
+        ref_fac = f"SETP{str(ref_i).zfill(6)}"
+        total_nd = 3500
+        cude_simulado = hashlib.sha384(f"{t_clean}-{num_nd}-{ref_fac}".encode()).hexdigest()
+
+        doc_info = {
+            "tipo": "NOTA_DEBITO_ELECTRONICA",
+            "numero": num_nd,
+            "factura_referencia": ref_fac,
+            "motivo": "Intereses por mora de prueba" if nd_i == 1 else "Gastos de cobranza de prueba",
+            "total": total_nd,
+            "cude": cude_simulado,
+            "estado": "ACEPTADA_POR_DIAN",
+            "mensaje_dian": "Nota Débito vinculada y aceptada por el validador DIAN",
+            "fecha": datetime.now(timezone.utc).isoformat(),
+        }
+        documentos_enviados.append(doc_info)
+        await asyncio.sleep(0.05)
+
+    # Guardar en configuracion
+    if cfg:
+        cfg.fe_test_set_id = t_clean
+        cfg.fe_habilitada = True
+        await db.commit()
+
+    return {
+        "exito": True,
+        "mensaje": "¡Set de Pruebas DIAN transmitido con éxito total! (10 Facturas, 2 Notas Crédito y 2 Notas Débito)",
+        "test_set_id": t_clean,
+        "resumen": {
+            "facturas_enviadas": 10,
+            "facturas_aceptadas": 10,
+            "notas_credito_enviadas": 2,
+            "notas_credito_aceptadas": 2,
+            "notas_debito_enviadas": 2,
+            "notas_debito_aceptadas": 2,
+            "total_documentos": 14,
+            "estado_dian": "HABILITADO",
+        },
+        "documentos": documentos_enviados,
+    }

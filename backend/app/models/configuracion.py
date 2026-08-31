@@ -43,5 +43,6 @@ class ConfiguracionEmpresa(Base):
     fe_rango_id = Column(String(50), default="")
     fe_tipo_documento = Column(String(50), default="POS_ELECTRONICO") # POS_ELECTRONICO | FACTURA_ELECTRONICA
     fe_municipio_id = Column(String(20), default="980") # Código DANE municipio (default Bogotá 980)
+    fe_test_set_id = Column(String(255), default="")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
