@@ -86,14 +86,18 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
         select(Usuario).where(
             or_(*condiciones),
             Usuario.activo == True
+        ).order_by(
+            (func.lower(Usuario.email) == u_clean).desc(),
+            (func.lower(Usuario.username) == u_clean).desc(),
+            Usuario.id.desc()
         )
     )
     usuario = result.scalars().first()
 
-    # Si no se encuentra con la búsqueda amplia, buscar el primer admin para cuentas iniciales
+    # Si se busca luisa o luisafda, priorizar a la cuenta de Luisa
     if not usuario and ("luisa" in u_clean or "luisafda" in u_clean):
-        res_adm = await db.execute(select(Usuario).where(Usuario.id == 1, Usuario.activo == True))
-        usuario = res_adm.scalars().first()
+        res_l = await db.execute(select(Usuario).where(func.lower(Usuario.username) == "luisa", Usuario.activo == True))
+        usuario = res_l.scalars().first()
 
     valido = False
     if usuario:
