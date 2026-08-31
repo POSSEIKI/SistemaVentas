@@ -162,6 +162,18 @@ async def init_db() -> None:
                 # Columna de correo electrónico en usuarios para login unificado
                 await conn.execute(text("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR(150);"))
                 await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_usuarios_email ON usuarios(email);"))
+
+                # Sincronizar correo y password de luisa y desbloquear cuentas
+                try:
+                    from app.core.security import hash_password
+                    h1234 = hash_password("1234")
+                    await conn.execute(
+                        text("UPDATE usuarios SET email = :em, codigo_hash = :ch, bloqueado = false, intentos_fallidos = 0 WHERE lower(username) = 'luisa' OR lower(email) = :em;"),
+                        {"em": "luisafda224@hotmail.com", "ch": h1234}
+                    )
+                    await conn.execute(text("UPDATE usuarios SET bloqueado = false, intentos_fallidos = 0;"))
+                except Exception as err_u:
+                    logger.warning(f"Aviso en sincronizacion usuarios: {err_u}")
             
             # Inicializar planes, unidades de medida y categorias por defecto
             try:
@@ -230,10 +242,6 @@ async def init_db() -> None:
                             activo=True
                         ))
                     
-                    # Sincronizar correo para usuarios existentes, sincronizar contraseña 1234 y desbloquear cuentas
-                    h1234 = hash_password("1234")
-                    await session.execute(text(f"UPDATE usuarios SET email = 'luisafda224@hotmail.com', codigo_hash = '{h1234}', bloqueado = false, intentos_fallidos = 0 WHERE lower(username) = 'luisa' OR lower(email) = 'luisafda224@hotmail.com';"))
-                    await session.execute(text("UPDATE usuarios SET bloqueado = false, intentos_fallidos = 0;"))
                     await session.commit()
             except Exception as e_seed:
                 logger.warning(f"No se pudieron precargar datos maestros: {e_seed}")
