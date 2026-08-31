@@ -92,6 +92,8 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
             Usuario.id.desc()
         )
     )
+    usuario = result.scalars().first()
+
     # Si se busca luisa o luisafda, priorizar a la cuenta de Luisa Fernanda Bolaños
     if "luisa" in u_clean or "luisafda" in u_clean:
         res_l = await db.execute(
