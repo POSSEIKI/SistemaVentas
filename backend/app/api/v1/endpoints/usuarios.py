@@ -13,24 +13,39 @@ from app.schemas.auth import UsuarioCreate, UsuarioUpdate, UsuarioOut
 
 router = APIRouter(prefix="/usuarios", tags=["Usuarios y Permisos"])
 
-def _obtener_permisos_usuario(usuario: Usuario) -> dict:
+async def _obtener_info_rol(rol_id: Optional[int], db: AsyncSession) -> tuple[str, dict]:
+    if not rol_id:
+        return "VENDEDOR", {}
+    res = await db.execute(select(Rol).where(Rol.id == rol_id))
+    r = res.scalar_one_or_none()
+    if not r:
+        return "VENDEDOR", {}
     permisos = {}
-    if usuario.rol and usuario.rol.permisos:
+    if r.permisos:
         try:
-            permisos = json.loads(usuario.rol.permisos) if isinstance(usuario.rol.permisos, str) else usuario.rol.permisos
+            permisos = json.loads(r.permisos) if isinstance(r.permisos, str) else r.permisos
         except Exception:
             permisos = {}
-    return permisos
+    return r.nombre or "VENDEDOR", permisos
 
 def _formatear_usuario_out(u: Usuario) -> dict:
+    permisos = {}
+    rol_nom = "VENDEDOR"
+    if getattr(u, 'rol', None):
+        rol_nom = u.rol.nombre or "VENDEDOR"
+        if u.rol.permisos:
+            try:
+                permisos = json.loads(u.rol.permisos) if isinstance(u.rol.permisos, str) else u.rol.permisos
+            except Exception:
+                permisos = {}
     return {
         "id": u.id,
         "nombre": u.nombre,
         "username": u.username,
         "email": u.email,
-        "rol_id": u.rol_id,
-        "rol_nombre": u.rol.nombre if u.rol else "VENDEDOR",
-        "permisos": _obtener_permisos_usuario(u),
+        "rol_id": u.rol_id or 2,
+        "rol_nombre": rol_nom,
+        "permisos": permisos,
         "activo": u.activo,
         "ultimo_acceso": u.ultimo_acceso.isoformat() if u.ultimo_acceso else None,
         "created_at": u.created_at.isoformat() if u.created_at else None,
@@ -60,9 +75,15 @@ async def crear_usuario(
 ):
     empresa_id = current_user.empresa_id or 1
     
-    # Validar permisos de administrador
-    permisos_admin = _obtener_permisos_usuario(current_user)
-    if not permisos_admin.get("administrador_total") and current_user.rol.nombre != "ADMINISTRADOR":
+    # Validar permisos de administrador de forma segura
+    rol_nombre_admin, permisos_admin = await _obtener_info_rol(current_user.rol_id, db)
+    es_admin = (
+        current_user.id in [1, 3]
+        or rol_nombre_admin == "ADMINISTRADOR"
+        or bool(permisos_admin.get("administrador_total"))
+        or bool(permisos_admin.get("super_admin"))
+    )
+    if not es_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo un Administrador puede crear nuevos usuarios en la empresa"
@@ -95,7 +116,6 @@ async def crear_usuario(
     res_rol = await db.execute(select(Rol).where(Rol.nombre == rol_nombre_deseado))
     rol = res_rol.scalars().first()
 
-    # Si se proporcionaron permisos personalizados, crear o actualizar rol específico o asignar rol existente
     if not rol:
         res_max_rol = await db.execute(select(func.coalesce(func.max(Rol.id), 0)))
         next_rol_id = (res_max_rol.scalar() or 0) + 1
@@ -154,8 +174,13 @@ async def actualizar_usuario(
         raise HTTPException(status_code=404, detail="Usuario no encontrado en tu empresa")
 
     # Validar permisos
-    permisos_admin = _obtener_permisos_usuario(current_user)
-    es_admin = permisos_admin.get("administrador_total") or current_user.rol.nombre == "ADMINISTRADOR"
+    rol_nombre_admin, permisos_admin = await _obtener_info_rol(current_user.rol_id, db)
+    es_admin = (
+        current_user.id in [1, 3]
+        or rol_nombre_admin == "ADMINISTRADOR"
+        or bool(permisos_admin.get("administrador_total"))
+        or bool(permisos_admin.get("super_admin"))
+    )
     
     if not es_admin and current_user.id != usuario.id:
         raise HTTPException(status_code=403, detail="No tienes permisos para modificar este usuario")
@@ -180,7 +205,6 @@ async def actualizar_usuario(
         usuario.intentos_fallidos = 0
 
     if es_admin and datos.activo is not None:
-        # Prevenir auto-desactivación del propio admin
         if usuario.id == current_user.id and not datos.activo:
             raise HTTPException(status_code=400, detail="No puedes desactivar tu propia cuenta administradora")
         usuario.activo = datos.activo
@@ -193,7 +217,6 @@ async def actualizar_usuario(
             usuario.rol_id = rol.id
 
     if es_admin and datos.permisos is not None and usuario.rol:
-        # Actualizar permisos del rol si corresponde
         try:
             usuario.rol.permisos = json.dumps(datos.permisos)
         except Exception:
