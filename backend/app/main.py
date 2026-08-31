@@ -40,5 +40,6 @@ app.include_router(resoluciones.router, prefix=API_PREFIX)
 app.include_router(superadmin.router, prefix=API_PREFIX)
 
 @app.get("/health")
+@app.get("/api/v1/health")
 async def health():
     return {"status": "ok", "version": settings.APP_VERSION}

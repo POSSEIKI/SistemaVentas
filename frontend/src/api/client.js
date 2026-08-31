@@ -30,8 +30,29 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (r) => r,
-  (error) => {
-    const isLoginRequest = error.config?.url?.includes('/auth/login')
+  async (error) => {
+    const config = error.config
+    if (!config) return Promise.reject(error)
+
+    // Configurar contador de reintentos para desconexiones o reinicios de servidor
+    config.__retryCount = config.__retryCount || 0
+
+    const isNetworkOrServerRestart = 
+      !error.response ||
+      error.code === 'ERR_NETWORK' ||
+      error.code === 'ECONNABORTED' ||
+      error.message === 'Network Error' ||
+      [502, 503, 504].includes(error.response?.status)
+
+    // Si el servidor se está reiniciando/despertando, reintentar hasta 3 veces automáticamente
+    if (isNetworkOrServerRestart && config.__retryCount < 3) {
+      config.__retryCount += 1
+      const delayMs = config.__retryCount * 1200 // 1.2s, 2.4s, 3.6s
+      await new Promise((res) => setTimeout(res, delayMs))
+      return api(config)
+    }
+
+    const isLoginRequest = config.url?.includes('/auth/login')
     const isAuthPage = typeof window !== 'undefined' && (window.location.pathname.includes('/login') || window.location.pathname.includes('/registro'))
 
     if (error.response?.status === 401 && !isLoginRequest && !isAuthPage) {
@@ -55,8 +76,8 @@ api.interceptors.response.use(
         msg = 'Recurso no encontrado en el servidor.'
       } else if (error.response?.status >= 500) {
         msg = 'Error interno del servidor. Por favor reintenta.'
-      } else if (error.message === 'Network Error' || error.code === 'ERR_NETWORK') {
-        msg = 'El servidor está iniciando o reconectando. Por favor reintenta en unos segundos.'
+      } else if (isNetworkOrServerRestart) {
+        msg = 'El servidor se está reconectando. Por favor reintenta en unos segundos.'
       } else {
         msg = error.message || 'Error de conexión con el servidor'
       }

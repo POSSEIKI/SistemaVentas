@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
@@ -7,6 +8,7 @@ import AppLayout from './components/layout/AppLayout'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import SignUpPage from './pages/SignUpPage'
+import api from './api/client'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +52,16 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Keep-alive heartbeat cada 3 minutos para mantener el backend activo y sin demoras
+    const pingServer = () => {
+      api.get('/health').catch(() => {})
+    }
+    pingServer()
+    const interval = setInterval(pingServer, 180000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
