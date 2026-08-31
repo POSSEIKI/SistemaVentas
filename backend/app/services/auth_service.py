@@ -173,5 +173,6 @@ async def login(request: LoginRequest, db: AsyncSession) -> TokenResponse:
         username=usuario.username,
         rol=rol.nombre if rol else "",
         permisos=permisos,
+        empresa_id=empresa_id,
         rubro=rubro,
     )

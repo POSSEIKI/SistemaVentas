@@ -19,6 +19,7 @@ class TokenResponse(BaseModel):
     username: str
     rol: str
     permisos: dict
+    empresa_id: Optional[int] = 1
     rubro: Optional[str] = "FARMACIA"
 
 class SetupRequest(BaseModel):
