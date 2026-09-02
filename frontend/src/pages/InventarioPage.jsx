@@ -55,7 +55,7 @@ export default function InventarioPage() {
 
   // Paginación
   const [pagina, setPagina] = useState(1)
-  const [limite, setLimite] = useState(25)
+  const [limite, setLimite] = useState(10)
   const [totalProductos, setTotalProductos] = useState(0)
   const [totalPaginas, setTotalPaginas] = useState(1)
 
@@ -141,7 +141,7 @@ export default function InventarioPage() {
   }
 
   useEffect(() => {
-    cargarDatos('', '', 'TODOS', 1, 25)
+    cargarDatos('', '', 'TODOS', 1, 10)
   }, [])
 
   const handleBusquedaChange = (val) => {
@@ -865,7 +865,8 @@ export default function InventarioPage() {
                   onChange={e => cambiarLimite(e.target.value)}
                   className="bg-dark-700 border border-dark-600 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
                 >
-                  <option value={25}>25</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
                   <option value={250}>250</option>
