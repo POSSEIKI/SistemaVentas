@@ -46,7 +46,7 @@ export default function ParametrosProductos() {
   const [total, setTotal] = useState(0)
   const [pagina, setPagina] = useState(1)
   const [totalPaginas, setTotalPaginas] = useState(1)
-  const [limite] = useState(30)
+  const [limite, setLimite] = useState(10)
   const [busqueda, setBusqueda] = useState('')
   const [categoriaId, setCategoriaId] = useState('')
   const [categorias, setCategorias] = useState([])
@@ -80,12 +80,12 @@ export default function ParametrosProductos() {
     } catch {}
   }
 
-  const cargarProductos = async (pag = 1, q = busqueda, cat = categoriaId) => {
+  const cargarProductos = async (pag = 1, q = busqueda, cat = categoriaId, lim = limite) => {
     setCargando(true)
     try {
       const res = await productosApi.listar({
         pagina: pag,
-        limite,
+        limite: lim,
         q: q || undefined,
         categoria_id: cat ? parseInt(cat) : undefined,
       })
@@ -102,20 +102,27 @@ export default function ParametrosProductos() {
 
   useEffect(() => {
     cargarCategoriasYConfig()
-    cargarProductos(1)
+    cargarProductos(1, '', '', 10)
   }, [])
+
+  const cambiarLimite = (nuevoLim) => {
+    const l = parseInt(nuevoLim) || 10
+    setLimite(l)
+    setPagina(1)
+    cargarProductos(1, busqueda, categoriaId, l)
+  }
 
   const buscar = (q) => {
     setBusqueda(q)
     setPagina(1)
     clearTimeout(window._prt)
-    window._prt = setTimeout(() => cargarProductos(1, q, categoriaId), 250)
+    window._prt = setTimeout(() => cargarProductos(1, q, categoriaId, limite), 250)
   }
 
   const filtrarCategoria = (cat) => {
     setCategoriaId(cat)
     setPagina(1)
-    cargarProductos(1, busqueda, cat)
+    cargarProductos(1, busqueda, cat, limite)
   }
 
   const abrirCrear = () => {
@@ -418,27 +425,51 @@ export default function ParametrosProductos() {
           </div>
 
           {/* Paginación */}
-          {totalPaginas > 1 && (
-            <div className="bg-dark-900/80 px-4 py-2.5 border-t border-dark-700 flex justify-between items-center text-xs">
-              <button
-                type="button"
-                onClick={() => { setPagina(p => Math.max(1, p - 1)); cargarProductos(pagina - 1) }}
-                disabled={pagina === 1}
-                className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
-              >
-                <ChevronLeft size={13} /> Anterior
-              </button>
-              <span className="text-dark-400 text-xs">
-                Página <strong className="text-white">{pagina}</strong> de {totalPaginas} ({total} productos)
-              </span>
-              <button
-                type="button"
-                onClick={() => { setPagina(p => Math.min(totalPaginas, p + 1)); cargarProductos(pagina + 1) }}
-                disabled={pagina >= totalPaginas}
-                className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
-              >
-                Siguiente <ChevronRight size={13} />
-              </button>
+          {total > 0 && (
+            <div className="bg-dark-900/90 px-4 py-3 border-t border-dark-700 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+              <div className="text-dark-400">
+                Mostrando <strong className="text-white font-mono">{((pagina - 1) * limite) + 1} - {Math.min(pagina * limite, total)}</strong> de <strong className="text-white font-mono">{total.toLocaleString()}</strong> productos
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap justify-center">
+                {/* Selector de límite por página */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-dark-500 text-[11px]">Filas:</span>
+                  <select
+                    value={limite}
+                    onChange={e => cambiarLimite(e.target.value)}
+                    className="bg-dark-800 border border-dark-600 rounded-lg px-2 py-1 text-white font-mono text-xs focus:outline-none"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+
+                {/* Botones de navegación */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { const p = Math.max(1, pagina - 1); setPagina(p); cargarProductos(p, busqueda, categoriaId, limite) }}
+                    disabled={pagina === 1}
+                    className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    <ChevronLeft size={13} /> Anterior
+                  </button>
+                  <span className="px-2 py-1 bg-dark-800 border border-dark-700 rounded-lg text-white font-mono font-bold text-xs">
+                    {pagina} / {totalPaginas}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { const p = Math.min(totalPaginas, pagina + 1); setPagina(p); cargarProductos(p, busqueda, categoriaId, limite) }}
+                    disabled={pagina >= totalPaginas}
+                    className="btn-secondary py-1 px-2.5 text-xs flex items-center gap-1 disabled:opacity-30 disabled:pointer-events-none"
+                  >
+                    Siguiente <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
